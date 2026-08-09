@@ -24,6 +24,7 @@ set(FRIDA_ABI_DIR ${FRIDA_DIR}/${ANDROID_ABI})
 set(GUMPP_DIR ${FRIDA_DIR}/gumpp)
 set(IL2CPP_DIR ${INCLUDES_DIR}/il2cpp)
 set(XDL_DIR ${IL2CPP_DIR}/xdl)
+set(TOOL_DIR ${INCLUDES_DIR}/Tool)
 
 include_directories(
     ${CMAKE_CURRENT_DIR}
@@ -39,6 +40,7 @@ include_directories(
     ${IL2CPP_DIR}
     ${XDL_DIR}/include
     ${XDL_DIR}
+    ${TOOL_DIR}
 )
 
 add_library(imgui STATIC
@@ -88,6 +90,15 @@ add_library(il2cpp STATIC
     ${IL2CPP_DIR}/il2cpp_dump.cpp
 )
 
+add_library(tool STATIC
+    ${TOOL_DIR}/Util.cpp
+    ${TOOL_DIR}/Keyboard.cpp
+    ${TOOL_DIR}/Unity.cpp
+    ${TOOL_DIR}/PopUpSelector.cpp
+)
+
+target_link_libraries(tool il2cpp imgui)
+
 set(ASMJIT_STATIC ON)
 set(ASMJIT_NO_FOREIGN ON)
 set(ASMJIT_NO_INSTALL ON)
@@ -112,4 +123,5 @@ target_link_libraries(Demo
     asmjit
     xdl
     il2cpp
+    tool
 )
