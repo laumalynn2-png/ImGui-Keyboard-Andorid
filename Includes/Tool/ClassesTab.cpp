@@ -6,12 +6,15 @@
 #include "UnityDump.hpp"
 #include "Tool.hpp"
 #include "il2cpp/log.h"
+#include "il2cpp_dump.h"
 #include <imgui.h>
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstring>
 #include <cstdio>
 #include <fstream>
+#include <future>
 #include <list>
 #include <mutex>
 #include <sstream>
@@ -161,6 +164,110 @@ ClassesTab& Tool::OpenNewTabFromClass(UnityResolve::Class* klass) {
         }
     }
     return tab;
+}
+
+void Tool::ConfigLoad() {
+    try {
+        Util::FileReader configFile("tool_config.json");
+        nlohmann::ordered_json j = nlohmann::ordered_json::parse(configFile.read());
+        s_tabs.clear();
+        for (auto& tabJ : j) {
+            ClassesTab tab;
+            from_json(tabJ, tab);
+            s_tabs.push_back(std::move(tab));
+        }
+    } catch (nlohmann::json::exception& e) {
+        LOGE("Failed to load tool_config.json: %s", e.what());
+        ConfigSave();
+    }
+}
+
+void Tool::ConfigInit() {
+    Util::FileReader config("tool_config.json");
+    if (config.exists()) {
+        ConfigLoad();
+    } else {
+        ConfigSave();
+    }
+}
+
+void Tool::Init() {
+    ConfigInit();
+    if (s_tabs.empty()) {
+        OpenNewTab();
+    }
+    for (auto& tab : s_tabs) {
+        tab.FilterClasses(tab.filter);
+    }
+    Frida::Init();
+}
+
+void Tool::Draw() {
+    if (ImGui::BeginTabBar("tabber", ImGuiTabBarFlags_AutoSelectNewTabs |
+                         ImGuiTabBarFlags_FittingPolicyScroll |
+                         ImGuiTabBarFlags_TabListPopupButton)) {
+        if (ImGui::TabItemButton("+", ImGuiTabItemFlags_NoTooltip | ImGuiTabItemFlags_Leading)) {
+            auto& tab = OpenNewTab();
+            tab.FilterClasses(tab.filter);
+        }
+        int i = 0;
+        auto it = s_tabs.begin();
+        while (it != s_tabs.end()) {
+            if (!it->opened) {
+                it = s_tabs.erase(it);
+                if (s_tabs.empty()) {
+                    auto& tab = OpenNewTab();
+                    tab.FilterClasses(tab.filter);
+                    break;
+                }
+                ConfigSave();
+            } else {
+                ImGui::PushID(i);
+                it->Draw(i, true);
+                it->DrawTabMap();
+                ImGui::PopID();
+                ++it;
+                i++;
+            }
+        }
+        ImGui::EndTabBar();
+    }
+}
+
+void Tool::Dumper() {
+    static std::string currentDump;
+    if (!currentDump.empty()) {
+        ImGui::Text("Dumping %s", currentDump.c_str());
+    }
+    static bool dumping = false;
+    if (ImGui::Button("DUMP")) {
+        if (dumping) {
+            currentDump = "are in progress or finished!";
+        }
+        dumping = true;
+    }
+    if (dumping) {
+        static char outFile[256];
+        snprintf(outFile, sizeof(outFile), "%s/%s_%s.cs",
+                 UnityResolve::getDataPath().c_str(),
+                 UnityResolve::getPackageName().c_str(),
+                 UnityResolve::getGameVersion().c_str());
+        static bool dumped = false;
+        static std::future<void> dumpFuture = std::async(std::launch::async, [] {
+            il2cpp_dump(std::string(outFile), [](const char* name, int, int) {
+                currentDump = name;
+            });
+        });
+        if (!dumped && dumpFuture.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            currentDump = "Done";
+            dumped = true;
+        }
+        if (dumped) {
+            if (ImGui::Button("Copy path")) {
+                Keyboard::Open(outFile, nullptr);
+            }
+        }
+    }
 }
 
 ClassesTab::MethodList& ClassesTab::buildMethodMap(Class klass) {

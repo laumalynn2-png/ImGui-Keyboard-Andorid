@@ -1,24 +1,20 @@
 #include <Includes.hpp>
+#include <Tool/Tool.hpp>
+#include <Tool/Keyboard.hpp>
+#include <atomic>
 
-static char inputText[256] = "";
-static char inputMulti[1024] = "";
+static std::atomic<bool> toolReady{false};
 
 void DrawMenu() {
-
-    ImGui::Begin("Demo");
-    if (ImGui::BeginTabBar("MainTab")) {
-
-        if (ImGui::BeginTabItem("Main")) {
-
-            ImGui::InputText("Input", inputText, sizeof(inputText));
-            ImGui::InputTextMultiline("Multi", inputMulti, sizeof(inputMulti), ImVec2(-1, 100));
-
-            ImGui::EndTabItem();
-        }
-
-        ImGui::EndTabBar();
+    if (!toolReady.load()) {
+        ImGui::Begin("Tool");
+        ImGui::Text("Loading...");
+        ImGui::End();
+        return;
     }
-
+    ImGui::Begin("Tool");
+    Tool::Draw();
+    Tool::Dumper();
     ImGui::End();
 }
 
@@ -51,8 +47,10 @@ EGLBoolean _eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
         prevWantTextInput = wantTextInput;
         ShowKeyboard(wantTextInput);
     }
+    UnityResolve::EnsureAttached();
     ImGui::NewFrame();
     ImGui::SetNextWindowSize(ImVec2((float)glWidth / 2, (float)glHeight / 2), ImGuiCond_Once);
+    Keyboard::Update();
     DrawMenu();
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -72,14 +70,11 @@ void *input_thread(void *) {
 void *MainThread(void *) {
     sleep(2);
 
-    void *handle = xdl_open("libil2cpp.so", XDL_DEFAULT);
-    if (!handle)
-        handle = dlopen("libil2cpp.so", RTLD_NOW);
-
-    if (handle) {
-        il2cpp_api_init(handle);
-        il2cpp_dump();
-    }
+    UnityResolve::Init();
+    UnityResolve::EnsureAttached();
+    Keyboard::Init();
+    Tool::Init();
+    toolReady = true;
 
     return nullptr;
 }
@@ -96,8 +91,6 @@ void libmain() {
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 {
     jvm = vm;
-    // Load Dex From Memory
     LoadDex(imgui_dex, imgui_dex_len);
-   // Toast("Testing Toast");
     return JNI_VERSION_1_6;
 }
