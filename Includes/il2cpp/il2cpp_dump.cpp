@@ -614,3 +614,78 @@ std::vector<UnityResolve::Class*> UnityResolve::GetSubClasses(Class* klass) {
 	}
 	return result;
 }
+
+std::vector<UnityResolve::UnityType::Object*> UnityResolve::FindObjectsOfType(const std::string& className) {
+	auto klass = FindClass(className);
+	if (!klass || !klass->address) {
+		LOGE("FindObjectsOfType: class not found: %s", className.c_str());
+		return {};
+	}
+	static auto unityObjectClass = FindClass("UnityEngine.Object");
+	if (!unityObjectClass || !unityObjectClass->address) return {};
+	auto method = unityObjectClass->Get<Method>("FindObjectsOfType", {"System.Type"});
+	if (!method || !method->function) return {};
+	if (!il2cpp_class_get_type || !il2cpp_type_get_object) return {};
+	auto typeObj = il2cpp_type_get_object(il2cpp_class_get_type(klass->address));
+	if (!typeObj) return {};
+	auto arr = method->Invoke<UnityType::Array<UnityType::Object*>*>(typeObj, method->address);
+	if (!arr) return {};
+	std::vector<UnityType::Object*> result;
+	if (!il2cpp_array_length) return result;
+	auto len = il2cpp_array_length(arr);
+	result.reserve(len);
+	for (uint32_t i = 0; i < len; i++) {
+		auto obj = arr->At(i);
+		if (obj) result.push_back(obj);
+	}
+	return result;
+}
+
+std::vector<UnityResolve::UnityType::Object*> UnityResolve::GC::FindObjects(Class* klass) {
+	if (!klass || !klass->address) return {};
+	static auto version = getUnityVersion();
+	static bool useOldApi = UnityVersion::lt(version, "2021.2.0");
+	std::vector<UnityType::Object*> objects;
+	auto callback = +[](void** arr, int size, void* userdata) {
+		auto vec = static_cast<std::vector<UnityType::Object*>*>(userdata);
+		for (int i = 0; i < size; i++)
+			vec->push_back(static_cast<UnityType::Object*>(arr[i]));
+	};
+	if (useOldApi) {
+		if (!il2cpp_unity_liveness_calculation_begin || !il2cpp_unity_liveness_calculation_from_statics || !il2cpp_unity_liveness_calculation_end) return objects;
+		auto onWorld = +[]() {};
+		auto state = il2cpp_unity_liveness_calculation_begin(klass->address, 0, (void*)callback, &objects, (void*)onWorld, (void*)onWorld);
+		if (state) {
+			il2cpp_unity_liveness_calculation_from_statics(state);
+			il2cpp_unity_liveness_calculation_end(state);
+		}
+	} else {
+		if (!il2cpp_unity_liveness_allocate_struct || !il2cpp_unity_liveness_calculation_from_statics || !il2cpp_unity_liveness_finalize || !il2cpp_unity_liveness_free_struct || !il2cpp_stop_gc_world || !il2cpp_start_gc_world) return objects;
+		auto realloc = +[](void* ptr, size_t size, void* userdata) -> void* {
+			if (ptr != nullptr && size == 0) {
+				il2cpp_free(ptr);
+				return nullptr;
+			}
+			return il2cpp_alloc(size);
+		};
+		il2cpp_stop_gc_world();
+		auto state = il2cpp_unity_liveness_allocate_struct(klass->address, 0, (void*)callback, &objects, (void*)realloc);
+		if (state) {
+			il2cpp_unity_liveness_calculation_from_statics(state);
+			il2cpp_unity_liveness_finalize(state);
+		}
+		il2cpp_start_gc_world();
+		if (state) il2cpp_unity_liveness_free_struct(state);
+	}
+	LOGI("GC::FindObjects found %zu objects for %s", objects.size(), klass->name.c_str());
+	return objects;
+}
+
+void UnityResolve::GC::KeepAlive(UnityType::Object* object) {
+	if (!object) return;
+	static auto gcClass = FindClass("System.GC");
+	if (!gcClass || !gcClass->address) return;
+	auto method = gcClass->Get<Method>("KeepAlive");
+	if (!method || !method->function) return;
+	method->Invoke<void>(object, method->address);
+}

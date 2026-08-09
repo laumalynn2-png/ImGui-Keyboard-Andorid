@@ -2921,6 +2921,13 @@ public:
 		il2cpp_field_set_value_object(obj, field->address, value);
 	}
 
+	static std::vector<UnityType::Object*> FindObjectsOfType(const std::string& className);
+
+	struct GC {
+		static std::vector<UnityType::Object*> FindObjects(Class* klass);
+		static void KeepAlive(UnityType::Object* object);
+	};
+
 };
 
 namespace UnityVersion {
