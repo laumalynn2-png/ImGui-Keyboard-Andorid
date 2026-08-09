@@ -472,6 +472,31 @@ public:
 		return result;
 	}
 
+	static void Init() {
+		static bool initialized = false;
+		if (initialized) return;
+		initialized = true;
+		auto handle = xdl_open("libil2cpp.so", 0);
+		if (handle) {
+			il2cpp_api_init(handle);
+			xdl_close(handle);
+		}
+	}
+
+	static bool EnsureAttached() {
+		if (!il2cpp_thread_current) return false;
+		if (il2cpp_thread_current()) return true;
+		if (!il2cpp_domain_get || !il2cpp_thread_attach) return false;
+		auto thread = il2cpp_thread_attach(il2cpp_domain_get());
+		return thread != nullptr;
+	}
+
+	static void Detach() {
+		if (!il2cpp_thread_current || !il2cpp_thread_detach) return;
+		auto curr = il2cpp_thread_current();
+		if (curr) il2cpp_thread_detach(curr);
+	}
+
 public:
 	class UnityType final {
 	public:
