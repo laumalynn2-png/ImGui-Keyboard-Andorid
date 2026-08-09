@@ -148,6 +148,9 @@ DO_API(void, il2cpp_unity_liveness_calculation_from_statics, (void* state));
 DO_API(void, il2cpp_unity_liveness_finalize, (void* state));
 DO_API(void, il2cpp_unity_liveness_free_struct, (void* state));
 
+DO_API(void*, il2cpp_unity_liveness_calculation_begin, (void * filter, int max_object_count, void* callback, void* userdata, void* onWorldStarted, void* onWorldStopped));
+DO_API(void, il2cpp_unity_liveness_calculation_end, (void* state));
+
 DO_API(void*, il2cpp_method_get_return_type, (void * method));
 DO_API(void*, il2cpp_method_get_declaring_type, (void * method));
 DO_API(const char*, il2cpp_method_get_name, (void * method));

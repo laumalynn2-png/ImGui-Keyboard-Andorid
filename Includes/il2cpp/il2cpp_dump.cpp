@@ -340,6 +340,7 @@ void il2cpp_api_init(void *handle) {
             il2cpp_base = reinterpret_cast<uint64_t>(dlInfo.dli_fbase);
         }
         LOGI("il2cpp_base: %" PRIx64"", il2cpp_base);
+        UnityResolve::il2cpp_base = il2cpp_base;
     } else {
         LOGE("Failed to initialize il2cpp api.");
         return;
