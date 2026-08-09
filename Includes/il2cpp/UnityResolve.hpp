@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <cstring>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
@@ -302,7 +303,7 @@ public:
 			return (T*)il2cpp_object_new(address);
 		}
 
-	private:
+	public:
 		static auto make_method(void* method) -> Method* {
 			auto result = new Method{ .address = method, .name = il2cpp_method_get_name(method) };
 			result->return_type = new Type{ .address = il2cpp_method_get_return_type(method) };
@@ -321,6 +322,120 @@ public:
 				result->args.push_back(arg);
 			}
 			return result;
+		}
+
+		auto getFullName() -> std::string {
+			if (!address) return "";
+			if (il2cpp_class_get_type && il2cpp_type_get_name) {
+				auto type = il2cpp_class_get_type(address);
+				if (type) {
+					auto typeName = il2cpp_type_get_name(type);
+					if (typeName && strlen(typeName) > 0) {
+						std::string result(typeName);
+						il2cpp_free(typeName);
+						return result;
+					}
+					if (typeName) il2cpp_free(typeName);
+				}
+			}
+			if (!namespaze.empty()) return namespaze + "." + name;
+			return name;
+		}
+
+		auto getFields(bool includeParents = false) -> std::vector<Field*> {
+			std::vector<Field*> fields;
+			if (!address || !il2cpp_class_get_fields) return fields;
+			std::vector<void*> classes;
+			classes.push_back(address);
+			if (includeParents && il2cpp_class_get_parent) {
+				auto parent = il2cpp_class_get_parent(address);
+				int maxDepth = 50;
+				while (parent && maxDepth-- > 0) {
+					classes.push_back(parent);
+					parent = il2cpp_class_get_parent(parent);
+				}
+			}
+			std::reverse(classes.begin(), classes.end());
+			for (auto klassAddr : classes) {
+				void* iter = nullptr;
+				while (auto field = il2cpp_class_get_fields(klassAddr, &iter)) {
+					auto result = new Field{};
+					result->address = field;
+					auto fname = il2cpp_field_get_name(field);
+					result->name = fname ? fname : "";
+					result->type = new Type{};
+					result->type->address = il2cpp_field_get_type(field);
+					if (auto tn = il2cpp_type_get_name(result->type->address)) { result->type->name = tn; il2cpp_free(tn); }
+					result->type->size = -1;
+					result->klass = this;
+					result->offset = il2cpp_field_get_offset(field);
+					result->static_field = result->offset <= 0;
+					fields.push_back(result);
+				}
+			}
+			return fields;
+		}
+
+		auto getMethods(const std::string& filter = "", bool includeParents = false) -> std::vector<Method*> {
+			std::vector<Method*> methods;
+			if (!address || !il2cpp_class_get_methods) return methods;
+			std::vector<void*> classes;
+			classes.push_back(address);
+			if (includeParents && il2cpp_class_get_parent) {
+				auto parent = il2cpp_class_get_parent(address);
+				int maxDepth = 50;
+				while (parent && maxDepth-- > 0) {
+					classes.push_back(parent);
+					parent = il2cpp_class_get_parent(parent);
+				}
+			}
+			std::reverse(classes.begin(), classes.end());
+			for (auto klassAddr : classes) {
+				void* iter = nullptr;
+				while (auto method = il2cpp_class_get_methods(klassAddr, &iter)) {
+					if (!filter.empty()) {
+						auto mname = il2cpp_method_get_name(method);
+						if (!mname || strstr(mname, filter.c_str()) == nullptr) continue;
+					}
+					methods.push_back(make_method(method));
+				}
+			}
+			return methods;
+		}
+
+		auto isGeneric() -> bool {
+			if (!address || !il2cpp_class_is_generic) return false;
+			return il2cpp_class_is_generic(address);
+		}
+
+		auto inflate(std::initializer_list<Class*> types) -> Class* {
+			if (!address || !il2cpp_get_corlib || !il2cpp_array_new || !il2cpp_class_from_name) return nullptr;
+			auto corlib = il2cpp_get_corlib();
+			if (!corlib) return nullptr;
+			auto systemTypeClass = il2cpp_class_from_name(corlib, "System", "Type");
+			if (!systemTypeClass) return nullptr;
+			auto array = (UnityType::Array<void*>*)il2cpp_array_new(systemTypeClass, types.size());
+			if (!array) return nullptr;
+			int i = 0;
+			for (auto type : types) {
+				if (type && type->address) {
+					auto typeObj = il2cpp_type_get_object(il2cpp_class_get_type(type->address));
+					(*array)[i] = typeObj;
+				}
+				i++;
+			}
+			auto thisTypeObj = il2cpp_type_get_object(il2cpp_class_get_type(address));
+			auto typeClass = GetOrCreateClass(systemTypeClass);
+			auto makeGenericMethod = typeClass->Get<Method>("MakeGenericType", {"System.Type[]"});
+			if (!makeGenericMethod) makeGenericMethod = typeClass->Get<Method>("MakeGenericType");
+			if (!makeGenericMethod || !makeGenericMethod->function) return nullptr;
+			using MakeGenericFn = void* (*)(void*, void*, void*);
+			auto fn = reinterpret_cast<MakeGenericFn>(makeGenericMethod->function);
+			auto result = fn(thisTypeObj, array, makeGenericMethod->address);
+			if (!result || !il2cpp_class_from_system_type) return nullptr;
+			auto inflatedClass = il2cpp_class_from_system_type(result);
+			if (!inflatedClass) return nullptr;
+			return GetOrCreateClass(inflatedClass);
 		}
 	};
 
