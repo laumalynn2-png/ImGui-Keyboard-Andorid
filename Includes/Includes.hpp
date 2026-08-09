@@ -137,6 +137,9 @@
 #include <jni.hpp>
 
 #include <MemoryPatch.h>
+#include <il2cpp_dump.h>
+#include <UnityResolve.hpp>
+#include <log.h>
 
 inline bool setup;
 inline int glWidth, glHeight;

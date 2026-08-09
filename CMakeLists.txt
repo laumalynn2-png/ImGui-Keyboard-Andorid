@@ -22,6 +22,8 @@ set(DOBBY_DIR ${INCLUDES_DIR}/Dobby)
 set(FRIDA_DIR ${INCLUDES_DIR}/Frida)
 set(FRIDA_ABI_DIR ${FRIDA_DIR}/${ANDROID_ABI})
 set(GUMPP_DIR ${FRIDA_DIR}/gumpp)
+set(IL2CPP_DIR ${INCLUDES_DIR}/il2cpp)
+set(XDL_DIR ${IL2CPP_DIR}/xdl)
 
 include_directories(
     ${CMAKE_CURRENT_DIR}
@@ -34,6 +36,9 @@ include_directories(
     ${INCLUDES_DIR}/KittyMemory
     ${FRIDA_ABI_DIR}
     ${GUMPP_DIR}
+    ${IL2CPP_DIR}
+    ${XDL_DIR}/include
+    ${XDL_DIR}
 )
 
 add_library(imgui STATIC
@@ -71,6 +76,18 @@ add_library(gumpp STATIC
     ${GUMPP_DIR}/runtime.cpp
 )
 
+add_library(xdl STATIC
+    ${XDL_DIR}/xdl.c
+    ${XDL_DIR}/xdl_iterate.c
+    ${XDL_DIR}/xdl_linker.c
+    ${XDL_DIR}/xdl_lzma.c
+    ${XDL_DIR}/xdl_util.c
+)
+
+add_library(il2cpp STATIC
+    ${IL2CPP_DIR}/il2cpp_dump.cpp
+)
+
 set(ASMJIT_STATIC ON)
 set(ASMJIT_NO_FOREIGN ON)
 set(ASMJIT_NO_INSTALL ON)
@@ -93,4 +110,6 @@ target_link_libraries(Demo
     gumpp
     kitty
     asmjit
+    xdl
+    il2cpp
 )
