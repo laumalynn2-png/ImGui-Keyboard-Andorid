@@ -355,10 +355,13 @@ void il2cpp_api_init(void *handle) {
 }
 
 void il2cpp_dump() {
-    LOGI("dumping...");
-
     auto pathStr = UnityResolve::UnityType::Application::get_persistentDataPath();
     std::string outDir = pathStr->ToString();
+    il2cpp_dump(outDir + "/dump.cs", [](const char*, int, int) {});
+}
+
+void il2cpp_dump(const std::string& outPath, const std::function<void(const char*, int, int)>& progress) {
+    LOGI("dumping...");
 
     size_t size;
     auto domain = il2cpp_domain_get();
@@ -374,7 +377,9 @@ void il2cpp_dump() {
         for (size_t i = 0; i < size; ++i) {
             auto image = il2cpp_assembly_get_image(assemblies[i]);
             std::stringstream imageStr;
-            imageStr << "\n// Dll : " << il2cpp_image_get_name(image);
+            auto imageName = il2cpp_image_get_name(image);
+            progress(imageName, (int)i, (int)size);
+            imageStr << "\n// Dll : " << imageName;
             auto classCount = il2cpp_image_get_class_count(image);
             for (size_t j = 0; j < classCount; ++j) {
                 auto klass = il2cpp_image_get_class(image, j);
@@ -412,6 +417,7 @@ void il2cpp_dump() {
             auto image = il2cpp_assembly_get_image(assemblies[i]);
             std::stringstream imageStr;
             auto image_name = il2cpp_image_get_name(image);
+            progress(image_name, (int)i, (int)size);
             imageStr << "\n// Dll : " << image_name;
             auto imageName = std::string(image_name);
             auto pos = imageName.rfind('.');
@@ -431,7 +437,6 @@ void il2cpp_dump() {
         }
     }
     LOGI("write dump file");
-    auto outPath = outDir + "/dump.cs";
     std::ofstream outStream(outPath);
     outStream << imageOutput.str();
     auto count = outPuts.size();
