@@ -67,12 +67,8 @@ add_library(gumpp STATIC
     ${GUMPP_DIR}/backtracer.cpp
     ${GUMPP_DIR}/interceptor.cpp
     ${GUMPP_DIR}/invocationlistener.cpp
-    ${GUMPP_DIR}/profiler.cpp
     ${GUMPP_DIR}/returnaddress.cpp
     ${GUMPP_DIR}/runtime.cpp
-    ${GUMPP_DIR}/sampler.cpp
-    ${GUMPP_DIR}/sanitychecker.cpp
-    ${GUMPP_DIR}/symbolutil.cpp
 )
 
 add_library(Demo SHARED
