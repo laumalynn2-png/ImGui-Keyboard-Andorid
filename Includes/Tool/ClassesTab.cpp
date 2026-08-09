@@ -1109,7 +1109,7 @@ void ClassesTab::Draw(int index, bool closeable) {
                                                setOpenedTab ? ImGuiTabItemFlags_SetSelected : 0))) {
         setOpenedTab = false;
         ImGui::BeginDisabled(includeAllImages);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(-1, io.DisplaySize.y / 1.5f));
+        ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(io.DisplaySize.x * 0.6f, io.DisplaySize.y / 1.5f));
         if (ImGui::BeginCombo("Image##ImageSelector", imageName(selectedImage))) {
             for (int i = 0; i < static_cast<int>(allImages.size()); i++) {
                 bool selected = selectedImageIndex == i;
