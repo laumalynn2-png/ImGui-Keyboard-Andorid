@@ -103,6 +103,8 @@ add_library(tool STATIC
     ${TOOL_DIR}/PopUpSelector.cpp
     ${TOOL_DIR}/Frida.cpp
     ${TOOL_DIR}/Patcher.cpp
+    ${TOOL_DIR}/UnityDump.cpp
+    ${TOOL_DIR}/ClassesTab.cpp
 )
 
 target_link_libraries(tool il2cpp imgui frida-gum gumpp asmjit kitty)
