@@ -71,6 +71,12 @@ add_library(gumpp STATIC
     ${GUMPP_DIR}/runtime.cpp
 )
 
+set(ASMJIT_STATIC ON)
+set(ASMJIT_NO_FOREIGN ON)
+set(ASMJIT_NO_INSTALL ON)
+set(ASMJIT_TEST OFF)
+add_subdirectory(${INCLUDES_DIR}/asmjit asmjit)
+
 add_library(Demo SHARED
     native-lib.cpp
 )
@@ -86,4 +92,5 @@ target_link_libraries(Demo
     frida-gum
     gumpp
     kitty
+    asmjit
 )
