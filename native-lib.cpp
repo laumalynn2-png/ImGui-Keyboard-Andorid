@@ -71,7 +71,16 @@ void *input_thread(void *) {
 
 void *MainThread(void *) {
     sleep(2);
-    // your hack here
+
+    void *handle = xdl_open("libil2cpp.so", XDL_DEFAULT);
+    if (!handle)
+        handle = dlopen("libil2cpp.so", RTLD_NOW);
+
+    if (handle) {
+        il2cpp_api_init(handle);
+        il2cpp_dump();
+    }
+
     return nullptr;
 }
 
