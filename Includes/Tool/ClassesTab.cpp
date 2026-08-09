@@ -244,7 +244,8 @@ void ClassesTab::ImGuiObjectSelector(int id, Class klass, const char* prefix,
     if (ImGui::Button("Find Objects")) {
         scanning = true;
         std::thread([&scanning, klass]() {
-            objectMap[klass] = UnityResolve::GC::FindObjects(klass);
+            auto found = UnityResolve::GC::FindObjects(klass);
+            objectMap[klass] = std::vector<Object>(found.begin(), found.end());
             scanning = false;
         }).detach();
     }
@@ -602,7 +603,7 @@ void ClassesTab::CallerView(Class klass, Method method, const MethodParamList& p
                 } else if (resultClass && resultClass->name == "System.String") {
                     resultStr = UnityDump::readString(result);
                 } else if (resultClass && UnityResolve::GetClassIsValueType(resultClass)) {
-                    UnityResolve::GC::KeepAlive(result);
+                    UnityResolve::GC::KeepAlive(static_cast<UnityResolve::UnityType::Object*>(result));
                     auto toString = resultClass->Get<UnityResolve::Method>("ToString");
                     if (toString) {
                         void* exc = nullptr;
