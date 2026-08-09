@@ -86,6 +86,7 @@ add_library(xdl STATIC
 
 add_library(il2cpp STATIC
     ${IL2CPP_DIR}/il2cpp_dump.cpp
+    ${IL2CPP_DIR}/UnityResolve_Ext.cpp
 )
 
 set(ASMJIT_STATIC ON)

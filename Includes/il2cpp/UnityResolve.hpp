@@ -2660,5 +2660,28 @@ public:
 		return null_class;
 	}
 
+	static std::string getUnityVersion();
+	static std::string getDataPath();
+	static std::string getPackageName();
+	static std::string getGameVersion();
+	static std::string getProductName();
+
+	static Class* FindClass(const std::string& fullName);
+	static Class* GetClassParent(Class* klass);
+	static Class* GetObjectClass(void* obj);
+	static bool IsClassParentOf(Class* klass, Class* parent);
+	static bool GetClassIsValueType(Class* klass);
+	static bool GetClassIsEnum(Class* klass);
+	static bool GetClassIsStatic(Class* klass);
+	static int32_t GetClassValueSize(Class* klass);
+	static std::vector<Class*> GetSubClasses(Class* klass);
+
 };
+
+namespace UnityVersion {
+	int compare(const std::string& a, const std::string& b);
+	std::string find(const std::string& str);
+	bool gte(const std::string& a, const std::string& b);
+	bool lt(const std::string& a, const std::string& b);
+}
 #endif
