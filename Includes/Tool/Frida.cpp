@@ -72,12 +72,12 @@ static std::string valueToString(UnityResolve::Type* type, void* intVal, const G
     }
     if (strcmp(typeName, "System.Int64") == 0) {
         char buf[24];
-        snprintf(buf, sizeof(buf), "%lld", (int64_t)(intptr_t)intVal);
+        snprintf(buf, sizeof(buf), "%" PRId64, (int64_t)(intptr_t)intVal);
         return buf;
     }
     if (strcmp(typeName, "System.UInt64") == 0) {
         char buf[24];
-        snprintf(buf, sizeof(buf), "%llu", (uint64_t)(uintptr_t)intVal);
+        snprintf(buf, sizeof(buf), "%" PRIu64, (uint64_t)(uintptr_t)intVal);
         return buf;
     }
     if (strcmp(typeName, "System.Single") == 0) {
@@ -119,7 +119,7 @@ static std::string valueToString(UnityResolve::Type* type, void* intVal, const G
         try {
             auto klass = type->getClass();
             if (!klass) return "?";
-            auto toString = klass->Get<UnityResolve::Method>("ToString", 0);
+            auto toString = klass->Get<UnityResolve::Method>("ToString");
             if (!toString) return "?";
             auto boxed = UnityResolve::GetBoxedValue(klass, &intVal);
             if (!boxed) return "null";
@@ -137,7 +137,7 @@ static std::string valueToString(UnityResolve::Type* type, void* intVal, const G
     try {
         auto klass = type->getClass();
         if (!klass) return "?";
-        auto toString = klass->Get<UnityResolve::Method>("ToString", 0);
+        auto toString = klass->Get<UnityResolve::Method>("ToString");
         if (!toString) return "?";
         void* exc = nullptr;
         auto result = il2cpp_runtime_invoke(toString->address, intVal, nullptr, &exc);
@@ -380,7 +380,7 @@ public:
                 return;
             }
         }
-        HookerData::visited.push_back({buffer, 2.f, 10.f, 0, innerArgs, ""});
+        HookerData::visited.push({buffer, 2.f, 10.f, 0, innerArgs, ""});
     }
 
     virtual void on_leave(Gum::InvocationContext* context) {
