@@ -95,9 +95,10 @@ add_library(tool STATIC
     ${TOOL_DIR}/Keyboard.cpp
     ${TOOL_DIR}/Unity.cpp
     ${TOOL_DIR}/PopUpSelector.cpp
+    ${TOOL_DIR}/Frida.cpp
 )
 
-target_link_libraries(tool il2cpp imgui)
+target_link_libraries(tool il2cpp imgui frida-gum gumpp)
 
 set(ASMJIT_STATIC ON)
 set(ASMJIT_NO_FOREIGN ON)
