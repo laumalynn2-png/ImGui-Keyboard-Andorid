@@ -70,11 +70,17 @@ void *input_thread(void *) {
 void *MainThread(void *) {
     sleep(2);
 
-    UnityResolve::Init();
-    UnityResolve::EnsureAttached();
-    Keyboard::Init();
-    Tool::Init();
-    toolReady = true;
+    void *handle = xdl_open("libil2cpp.so", XDL_DEFAULT);
+    if (!handle)
+        handle = dlopen("libil2cpp.so", RTLD_NOW);
+
+    if (handle) {
+        il2cpp_api_init(handle);
+        UnityResolve::EnsureAttached();
+        Keyboard::Init();
+        Tool::Init();
+        toolReady = true;
+    }
 
     return nullptr;
 }
