@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <algorithm>
 #include <mutex>
 #include <shared_mutex>
 #include <string>
@@ -103,6 +104,94 @@ public:
 
 		[[nodiscard]] auto GetCSType() const -> void* {
 			return il2cpp_type_get_object(address);
+		}
+
+		auto isPointer() const -> bool {
+			if (!address || !il2cpp_type_get_type) return false;
+			auto t = il2cpp_type_get_type(address);
+			return t == IL2CPP_TYPE_PTR || t == IL2CPP_TYPE_BYREF;
+		}
+
+		auto isPrimitive() const -> bool {
+			if (!address) return false;
+			static const std::vector<std::string> CSPrimitive = {
+				"System.Boolean", "System.Char", "System.SByte", "System.Byte",
+				"System.Int16", "System.UInt16", "System.Int32", "System.UInt32",
+				"System.Int64", "System.UInt64", "System.Single", "System.Double"
+			};
+			if (!name.empty()) {
+				return std::find(CSPrimitive.begin(), CSPrimitive.end(), name) != CSPrimitive.end();
+			}
+			if (!il2cpp_type_get_name) return false;
+			auto tn = il2cpp_type_get_name(address);
+			if (!tn) return false;
+			bool result = std::find_if(CSPrimitive.begin(), CSPrimitive.end(),
+				[tn](const std::string& s) { return s == tn; }) != CSPrimitive.end();
+			il2cpp_free(tn);
+			return result;
+		}
+
+		auto isObject() const -> bool {
+			if (!address || !il2cpp_type_get_type) return false;
+			switch (il2cpp_type_get_type(address)) {
+				case IL2CPP_TYPE_STRING:
+				case IL2CPP_TYPE_SZARRAY:
+				case IL2CPP_TYPE_CLASS:
+				case IL2CPP_TYPE_OBJECT:
+				case IL2CPP_TYPE_ARRAY:
+				case IL2CPP_TYPE_GENERICINST:
+					return true;
+				default:
+					return false;
+			}
+		}
+
+		auto isArray() const -> bool {
+			if (!address || !il2cpp_type_get_type) return false;
+			switch (il2cpp_type_get_type(address)) {
+				case IL2CPP_TYPE_SZARRAY:
+				case IL2CPP_TYPE_ARRAY:
+					return true;
+				default:
+					return false;
+			}
+		}
+
+		auto isValueType() const -> bool {
+			if (!address || !il2cpp_type_get_type) return false;
+			return il2cpp_type_get_type(address) == IL2CPP_TYPE_VALUETYPE;
+		}
+
+		auto isEnum() const -> bool {
+			if (!address || !il2cpp_class_from_type || !il2cpp_class_is_enum) return false;
+			auto klass = il2cpp_class_from_type(address);
+			if (!klass) return false;
+			return il2cpp_class_is_enum(klass);
+		}
+
+		auto isList() const -> bool {
+			if (!address) return false;
+			if (!name.empty()) {
+				return name.rfind("System.Collections.Generic.List", 0) == 0;
+			}
+			if (!il2cpp_type_get_name) return false;
+			auto tn = il2cpp_type_get_name(address);
+			if (!tn) return false;
+			bool result = std::string(tn).rfind("System.Collections.Generic.List", 0) == 0;
+			il2cpp_free(tn);
+			return result;
+		}
+
+		auto getName() -> char* {
+			if (!address || !il2cpp_type_get_name) return nullptr;
+			return il2cpp_type_get_name(address);
+		}
+
+		auto getClass() -> Class* {
+			if (!address || !il2cpp_class_from_type) return nullptr;
+			auto klass = il2cpp_class_from_type(address);
+			if (!klass) return nullptr;
+			return GetOrCreateClass(klass);
 		}
 	};
 
