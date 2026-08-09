@@ -90,21 +90,22 @@ add_library(il2cpp STATIC
     ${IL2CPP_DIR}/il2cpp_dump.cpp
 )
 
+set(ASMJIT_STATIC ON)
+set(ASMJIT_NO_FOREIGN ON)
+set(ASMJIT_NO_INSTALL ON)
+set(ASMJIT_TEST OFF)
+add_subdirectory(${INCLUDES_DIR}/asmjit asmjit)
+
 add_library(tool STATIC
     ${TOOL_DIR}/Util.cpp
     ${TOOL_DIR}/Keyboard.cpp
     ${TOOL_DIR}/Unity.cpp
     ${TOOL_DIR}/PopUpSelector.cpp
     ${TOOL_DIR}/Frida.cpp
+    ${TOOL_DIR}/Patcher.cpp
 )
 
-target_link_libraries(tool il2cpp imgui frida-gum gumpp)
-
-set(ASMJIT_STATIC ON)
-set(ASMJIT_NO_FOREIGN ON)
-set(ASMJIT_NO_INSTALL ON)
-set(ASMJIT_TEST OFF)
-add_subdirectory(${INCLUDES_DIR}/asmjit asmjit)
+target_link_libraries(tool il2cpp imgui frida-gum gumpp asmjit kitty)
 
 add_library(Demo SHARED
     native-lib.cpp
