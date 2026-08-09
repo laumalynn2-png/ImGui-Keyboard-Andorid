@@ -90,7 +90,6 @@ static int getEnumValue(UnityResolve::Type* type, const std::string& fieldName) 
 }
 
 void Tool::ConfigSave() {
-    if (s_tabs.empty()) return;
     nlohmann::ordered_json j = nlohmann::ordered_json::array();
     for (auto& tab : s_tabs) {
         nlohmann::ordered_json tj;
@@ -98,7 +97,6 @@ void Tool::ConfigSave() {
         j.push_back(tj);
     }
     Util::FileWriter file("tool_config.json");
-    file.open();
     file.write(j.dump(2, ' ').c_str());
 }
 
