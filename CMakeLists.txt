@@ -19,6 +19,9 @@ set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ImGui)
 set(IMGUI_BACKENDS_DIR ${IMGUI_DIR}/backends)
 set(IMGUI_FONTS_DIR ${IMGUI_DIR}/fonts)
 set(DOBBY_DIR ${INCLUDES_DIR}/Dobby)
+set(FRIDA_DIR ${INCLUDES_DIR}/Frida)
+set(FRIDA_ABI_DIR ${FRIDA_DIR}/${ANDROID_ABI})
+set(GUMPP_DIR ${FRIDA_DIR}/gumpp)
 
 include_directories(
     ${CMAKE_CURRENT_DIR}
@@ -29,6 +32,8 @@ include_directories(
     ${DOBBY_DIR}/include
     ${INCLUDES_DIR}/json
     ${INCLUDES_DIR}/KittyMemory
+    ${FRIDA_ABI_DIR}
+    ${GUMPP_DIR}
 )
 
 add_library(imgui STATIC
@@ -46,11 +51,28 @@ set_target_properties(dobby PROPERTIES
     IMPORTED_LOCATION ${DOBBY_DIR}/${ANDROID_ABI}/libdobby.a
 )
 
+add_library(frida-gum STATIC IMPORTED)
+set_target_properties(frida-gum PROPERTIES
+    IMPORTED_LOCATION ${FRIDA_ABI_DIR}/libfrida-gum.a
+)
+
 add_library(kitty STATIC
     ${INCLUDES_DIR}/KittyMemory/KittyMemory.cpp
     ${INCLUDES_DIR}/KittyMemory/KittyUtils.cpp
     ${INCLUDES_DIR}/KittyMemory/MemoryBackup.cpp
     ${INCLUDES_DIR}/KittyMemory/MemoryPatch.cpp
+)
+
+add_library(gumpp STATIC
+    ${GUMPP_DIR}/backtracer.cpp
+    ${GUMPP_DIR}/interceptor.cpp
+    ${GUMPP_DIR}/invocationlistener.cpp
+    ${GUMPP_DIR}/profiler.cpp
+    ${GUMPP_DIR}/returnaddress.cpp
+    ${GUMPP_DIR}/runtime.cpp
+    ${GUMPP_DIR}/sampler.cpp
+    ${GUMPP_DIR}/sanitychecker.cpp
+    ${GUMPP_DIR}/symbolutil.cpp
 )
 
 add_library(Demo SHARED
@@ -65,5 +87,7 @@ target_link_libraries(Demo
     GLESv3
     imgui
     dobby
+    frida-gum
+    gumpp
     kitty
 )
