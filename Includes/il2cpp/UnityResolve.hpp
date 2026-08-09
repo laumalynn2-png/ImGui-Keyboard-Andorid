@@ -307,6 +307,7 @@ public:
 	public:
 		static auto make_method(void* method) -> Method* {
 			auto result = new Method{ .address = method, .name = il2cpp_method_get_name(method) };
+			if (il2cpp_method_get_class) result->klass = GetOrCreateClass(il2cpp_method_get_class(method));
 			result->return_type = new Type{ .address = il2cpp_method_get_return_type(method) };
 			if (auto tn = il2cpp_type_get_name(result->return_type->address)) { result->return_type->name = tn; il2cpp_free(tn); }
 			result->return_type->size = -1;

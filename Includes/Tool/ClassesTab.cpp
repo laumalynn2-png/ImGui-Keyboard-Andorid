@@ -270,6 +270,132 @@ void Tool::Dumper() {
     }
 }
 
+void Tool::GameObjectx() {
+    struct Entry {
+        std::string className;
+        int count;
+    };
+
+    static std::vector<Entry> entries;
+    static double lastRefresh = -999.0;
+    constexpr double refreshInterval = 3.0;
+
+    double now = ImGui::GetTime();
+    if (now - lastRefresh >= refreshInterval) {
+        lastRefresh = now;
+        entries.clear();
+
+        auto objs = UnityResolve::FindObjectsOfType("UnityEngine.MonoBehaviour");
+
+        std::unordered_map<std::string, int> countMap;
+        for (auto* obj : objs) {
+            if (!obj) continue;
+            auto klass = UnityResolve::GetObjectClass(obj);
+            if (!klass) continue;
+            countMap[klass->name]++;
+        }
+
+        for (auto& [name, count] : countMap)
+            entries.push_back({name, count});
+
+        std::sort(entries.begin(), entries.end(),
+            [](const Entry& a, const Entry& b) { return a.count > b.count; });
+    }
+
+    if (ImGui::BeginTable("##goxtable", 3,
+        ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
+        ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupScrollFreeze(0, 1);
+        ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+        ImGui::TableSetupColumn("Class", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthFixed, 60.0f);
+        ImGui::TableHeadersRow();
+
+        int idx = 0;
+        for (auto& e : entries) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0); ImGui::Text("%d", idx++);
+            ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(e.className.c_str());
+            ImGui::TableSetColumnIndex(2); ImGui::Text("%d", e.count);
+        }
+
+        ImGui::EndTable();
+    }
+}
+
+size_t Tool::GetHookerCount() {
+    std::lock_guard<std::mutex> lock(s_hookerMtx);
+    return s_hookerMap.size();
+}
+
+void Tool::DrawTracerTab(bool& changeToToolsTab) {
+    ImGui::Text("Traced method count : %zu", s_hookerMap.size());
+    std::vector<HookerData*> sortedHooker;
+    {
+        std::lock_guard<std::mutex> lock(s_hookerMtx);
+        for (auto& [ptr, data] : s_hookerMap) {
+            if (data.hitCount > 0)
+                sortedHooker.push_back(&data);
+        }
+    }
+
+    if (!sortedHooker.empty()) {
+        if (ImGui::Button("Quick Restore"))
+            ImGui::OpenPopup("QuickRestorePopup");
+
+        std::sort(sortedHooker.begin(), sortedHooker.end(),
+                  [](const HookerData* a, const HookerData* b) { return a->hitCount > b->hitCount; });
+
+        ImGui::BeginChild("TracerList", ImVec2(0, 0), ImGuiChildFlags_None,
+                          ImGuiWindowFlags_HorizontalScrollbar);
+        auto& tab = GetFirstTab();
+        for (auto v : sortedHooker) {
+            if (!v->method || !v->method->klass) continue;
+
+            char label[256]{0};
+            snprintf(label, sizeof(label), "%s::%s (%dx)###%p",
+                     v->method->klass->name.c_str(), v->method->name.c_str(),
+                     v->hitCount, v->method);
+
+            ImGui::PushID(v->method);
+            bool opened = tab.MethodViewer(v->method->klass, v->method, v->method->args);
+            if (!opened && !changeToToolsTab && ImGui::IsItemHeld()) {
+                changeToToolsTab = true;
+                OpenNewTabFromClass(v->method->klass).setOpenedTab = true;
+                ImGui::PopID();
+                break;
+            }
+            ImGui::PopID();
+        }
+        ImGui::EndChild();
+
+        auto& io = ImGui::GetIO();
+        ImGui::SetNextWindowSizeConstraints(
+            ImVec2(io.DisplaySize.x / 1.2f, 0),
+            ImVec2(io.DisplaySize.x / 1.2f, io.DisplaySize.y / 2));
+        if (ImGui::BeginPopup("QuickRestorePopup",
+                              ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_MenuBar)) {
+            HookerData* toBeErased = nullptr;
+            for (auto v : sortedHooker) {
+                if (!v->method || !v->method->klass) continue;
+                char label[256]{0};
+                snprintf(label, sizeof(label), "%s::%s (%dx)###%p",
+                         v->method->klass->name.c_str(), v->method->name.c_str(),
+                         v->hitCount, v->method);
+                if (ImGui::Button(label, ImVec2(ImGui::GetContentRegionAvail().x, 0)))
+                    toBeErased = v;
+            }
+            if (toBeErased)
+                ToggleHooker(toBeErased->method, 0);
+            ImGui::EndPopup();
+        }
+    } else {
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
+        ImGui::Text("No traced method has been called yet");
+        ImGui::PopStyleColor();
+    }
+}
+
 ClassesTab::MethodList& ClassesTab::buildMethodMap(Class klass) {
     static std::mutex mtx;
     static std::unordered_map<Class, MethodList> cache;
