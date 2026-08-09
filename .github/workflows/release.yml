@@ -15,11 +15,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Cache NDK
+        id: ndk-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.tool_cache }}/ndk
+          key: ndk-r28-linux-x64
+
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         id: setup_ndk
         with:
-          ndk-version: r26d
+          ndk-version: r28
 
       - name: Configure CMake (Release)
         run: |
