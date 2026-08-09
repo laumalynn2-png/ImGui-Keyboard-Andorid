@@ -14,6 +14,7 @@
 #include <numbers>
 #include <sys/mman.h>
 #include <locale>
+#include "dobby.h"
 #include "xdl/include/xdl.h"
 #define UNITY_CALLING_CONVENTION
 
@@ -491,9 +492,47 @@ public:
 
 		std::vector<Arg*> args;
 
+		inline static std::unordered_map<uintptr_t, uintptr_t> hookedMap;
+		inline static std::shared_mutex hookedMapMtx;
+
+		static bool _isAlreadyHooked(uintptr_t ptr) {
+			std::shared_lock<std::shared_mutex> lock(hookedMapMtx);
+			return hookedMap.find(ptr) != hookedMap.end();
+		}
+
+		static void _addToHookedMap(uintptr_t ptr, uintptr_t orig) {
+			std::unique_lock<std::shared_mutex> lock(hookedMapMtx);
+			hookedMap[ptr] = orig;
+		}
+
+		static uintptr_t _getHookedMap(uintptr_t ptr) {
+			std::shared_lock<std::shared_mutex> lock(hookedMapMtx);
+			auto it = hookedMap.find(ptr);
+			if (it != hookedMap.end()) return it->second;
+			return ptr;
+		}
+
+		template <typename Func>
+		void* replace(Func func) {
+			if (!function) return nullptr;
+			if (_isAlreadyHooked((uintptr_t)function)) return nullptr;
+			void* orig = nullptr;
+			if (DobbyHook(function, (void*)func, &orig) != 0) return nullptr;
+			_addToHookedMap((uintptr_t)function, (uintptr_t)orig);
+			return orig;
+		}
+
+		uintptr_t getAbsAddress() {
+			if (!function) return 0;
+			return (uintptr_t)function - il2cpp_base;
+		}
+
 		template <typename Return, typename... Args>
 		auto Invoke(Args... args) -> Return {
-			if (function) return reinterpret_cast<Return(UNITY_CALLING_CONVENTION*)(Args...)>(function)(args...);
+			if (function) {
+				auto addr = _getHookedMap((uintptr_t)function);
+				return reinterpret_cast<Return(UNITY_CALLING_CONVENTION*)(Args...)>(addr)(args...);
+			}
 			return Return();
 		}
 
@@ -1186,6 +1225,55 @@ public:
 				if (!method) method = Get("mscorlib.dll")->Get("Object", "System")->Get<Method>("GetHashCode");
 				if (method) return method->Invoke<int>(this);
 				return 0;
+			}
+
+			template <typename T>
+			T invoke_method(const char* methodName) {
+				auto k = GetOrCreateClass(Il2CppClass.klass);
+				if (!k || !k->address) return T();
+				auto m = k->Get<Method>(methodName);
+				if (!m || !m->function) return T();
+				auto addr = Method::_getHookedMap((uintptr_t)m->function);
+				using Invoker = T (*)(void*, void*);
+				return reinterpret_cast<Invoker>(addr)(this, m->address);
+			}
+
+			template <typename T, typename... Args>
+			T invoke_method(const char* methodName, Args... args) {
+				auto k = GetOrCreateClass(Il2CppClass.klass);
+				if (!k || !k->address) return T();
+				auto m = k->Get<Method>(methodName);
+				if (!m || !m->function) return T();
+				auto addr = Method::_getHookedMap((uintptr_t)m->function);
+				using Invoker = T (*)(void*, Args..., void*);
+				return reinterpret_cast<Invoker>(addr)(this, args..., m->address);
+			}
+
+			template <typename T>
+			T getField(const char* name) {
+				auto k = GetOrCreateClass(Il2CppClass.klass);
+				if (!k || !k->address) return T();
+				auto f = k->Get<Field>(name);
+				if (!f) return T();
+				if (f->static_field && il2cpp_field_static_get_value) {
+					T value{};
+					il2cpp_field_static_get_value(f->address, &value);
+					return value;
+				}
+				return *reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(this) + f->offset);
+			}
+
+			template <typename T>
+			void setField(const char* name, T value) {
+				auto k = GetOrCreateClass(Il2CppClass.klass);
+				if (!k || !k->address) return;
+				auto f = k->Get<Field>(name);
+				if (!f) return;
+				if (f->static_field && il2cpp_field_static_set_value) {
+					il2cpp_field_static_set_value(f->address, &value);
+					return;
+				}
+				*reinterpret_cast<T*>(reinterpret_cast<uintptr_t>(this) + f->offset) = value;
 			}
 		};
 
@@ -2790,6 +2878,48 @@ public:
 	static bool GetClassIsStatic(Class* klass);
 	static int32_t GetClassValueSize(Class* klass);
 	static std::vector<Class*> GetSubClasses(Class* klass);
+
+	static void* GetBoxedValue(Class* klass, void* value) {
+		if (!klass || !klass->address || !il2cpp_value_box) return nullptr;
+		return il2cpp_value_box(klass->address, value);
+	}
+
+	static void* GetUnboxedValue(void* obj) {
+		if (!obj || !il2cpp_object_unbox) return nullptr;
+		return il2cpp_object_unbox(obj);
+	}
+
+	template <typename T>
+	static T GetUnboxedValue(void* obj) {
+		auto value = GetUnboxedValue(obj);
+		if (!value) return T();
+		return *static_cast<T*>(value);
+	}
+
+	static void* RuntimeInvokeConvertArgs(Method* method, void* obj, void** params, int count) {
+		if (!method || !method->address || !il2cpp_runtime_invoke_convert_args) return nullptr;
+		return il2cpp_runtime_invoke_convert_args(method->address, obj, params, count, nullptr);
+	}
+
+	static bool GetIsMethodInflated(Method* method) {
+		if (!method || !method->address || !il2cpp_method_is_inflated) return false;
+		return il2cpp_method_is_inflated(method->address);
+	}
+
+	static bool GetIsMethodGeneric(Method* method) {
+		if (!method || !method->address || !il2cpp_method_is_generic) return false;
+		return il2cpp_method_is_generic(method->address);
+	}
+
+	static void* GetFieldValueObject(void* obj, Field* field) {
+		if (!obj || !field || !field->address || !il2cpp_field_get_value_object) return nullptr;
+		return il2cpp_field_get_value_object(field->address, obj);
+	}
+
+	static void SetFieldValueObject(void* obj, Field* field, void* value) {
+		if (!obj || !field || !field->address || !il2cpp_field_set_value_object) return;
+		il2cpp_field_set_value_object(obj, field->address, value);
+	}
 
 };
 
