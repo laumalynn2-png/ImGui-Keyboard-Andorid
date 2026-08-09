@@ -127,6 +127,9 @@
 #include <version>
 #include <format>
 #include <dobby.h>
+#include <frida-gum.h>
+#include <gumpp.hpp>
+#include <asmjit/asmjit.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <imgui_impl_android.h>
