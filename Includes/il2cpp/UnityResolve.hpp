@@ -13,6 +13,7 @@
 #include <functional>
 #include <numbers>
 #include <sys/mman.h>
+#include <unistd.h>
 #include <locale>
 #include "dobby.h"
 #include "xdl/include/xdl.h"
