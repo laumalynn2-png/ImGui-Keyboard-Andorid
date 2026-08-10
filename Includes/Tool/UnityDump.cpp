@@ -4,6 +4,10 @@
 
 namespace UnityDump {
 
+static size_t g_maxArraySize = 50;
+
+void SetMaxArraySize(size_t size) { g_maxArraySize = size; }
+
 std::string readString(void* strObj) {
     if (!strObj || !il2cpp_string_length || !il2cpp_string_chars) return "null";
     auto len = il2cpp_string_length(strObj);
@@ -121,7 +125,7 @@ static nlohmann::ordered_json dumpValue(void* obj, size_t offset, void* fieldTyp
             auto arrClass = il2cpp_class_from_type ? il2cpp_class_from_type(fieldType) : nullptr;
             auto elemClass = (arrClass && il2cpp_class_get_element_class) ? il2cpp_class_get_element_class(arrClass) : nullptr;
             bool elemIsValueType = elemClass && il2cpp_class_is_valuetype && il2cpp_class_is_valuetype(elemClass);
-            for (uint32_t i = 0; i < len && i < 50; i++) {
+            for (uint32_t i = 0; i < len && i < g_maxArraySize; i++) {
                 if (elemIsValueType && elemClass) {
                     uint32_t align = 0;
                     int elemSize = il2cpp_class_value_size ? il2cpp_class_value_size(elemClass, &align) : (int)sizeof(void*);

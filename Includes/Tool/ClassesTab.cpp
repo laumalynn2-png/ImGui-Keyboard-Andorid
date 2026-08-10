@@ -45,6 +45,11 @@ static std::vector<void*> getAllImages() {
         if (image) images.push_back(image);
     }
     il2cpp_free(assemblies);
+    if (il2cpp_image_get_name) {
+        std::sort(images.begin(), images.end(), [](void* a, void* b) {
+            return strcmp(il2cpp_image_get_name(a), il2cpp_image_get_name(b)) < 0;
+        });
+    }
     return images;
 }
 
@@ -104,15 +109,20 @@ bool Tool::ToggleHooker(UnityResolve::Method* method, int state) {
     auto ptr = method->function;
     auto oIt = ClassesTab::oMap.find(ptr);
     if (oIt != ClassesTab::oMap.end() && !oIt->second.bytes.empty()) return false;
-    std::lock_guard<std::mutex> lock(HookerData::traceMtx);
-    auto it = s_hookerMap.find(ptr);
-    bool hooked = it != s_hookerMap.end();
+    bool hooked;
+    {
+        std::lock_guard<std::mutex> lock(HookerData::traceMtx);
+        hooked = s_hookerMap.find(ptr) != s_hookerMap.end();
+    }
     if (state == -1) {
         if (hooked) {
-            Frida::Untrace(method);
-            s_hookerMap.erase(it);
+            if (Frida::Untrace(method)) {
+                std::lock_guard<std::mutex> lock(HookerData::traceMtx);
+                s_hookerMap.erase(ptr);
+            }
             return false;
         }
+        std::lock_guard<std::mutex> lock(HookerData::traceMtx);
         auto& data = s_hookerMap[ptr];
         data.method = method;
         if (!Frida::Trace(method, &data)) {
@@ -123,12 +133,15 @@ bool Tool::ToggleHooker(UnityResolve::Method* method, int state) {
     }
     if (state == 0) {
         if (hooked) {
-            Frida::Untrace(method);
-            s_hookerMap.erase(it);
+            if (Frida::Untrace(method)) {
+                std::lock_guard<std::mutex> lock(HookerData::traceMtx);
+                s_hookerMap.erase(ptr);
+            }
         }
         return false;
     }
     if (!hooked) {
+        std::lock_guard<std::mutex> lock(HookerData::traceMtx);
         auto& data = s_hookerMap[ptr];
         data.method = method;
         if (!Frida::Trace(method, &data)) {
@@ -146,27 +159,42 @@ ClassesTab& Tool::GetFirstTab() {
 }
 
 ClassesTab& Tool::OpenNewTab() {
+    void* img = nullptr;
+    int imgIdx = 0;
+    for (auto& c : s_tabs) {
+        if (c.setOpenedTab) {
+            img = c.selectedImage;
+            imgIdx = c.selectedImageIndex;
+            break;
+        }
+    }
     s_tabs.emplace_back();
     auto& tab = s_tabs.back();
     tab.setOpenedTab = true;
+    if (img) {
+        tab.selectedImage = img;
+        tab.selectedImageIndex = imgIdx;
+    }
     return tab;
 }
 
 ClassesTab& Tool::OpenNewTabFromClass(UnityResolve::Class* klass) {
-    s_tabs.emplace_back();
-    auto& tab = s_tabs.back();
-    tab.setOpenedTab = true;
-    if (klass && klass->address && il2cpp_class_get_image) {
-        auto img = il2cpp_class_get_image(klass->address);
-        if (img) {
-            tab.selectedImage = img;
-            for (size_t i = 0; i < tab.allImages.size(); i++) {
-                if (tab.allImages[i] == img) {
-                    tab.selectedImageIndex = static_cast<int>(i);
-                    break;
+    auto& tab = OpenNewTab();
+    if (klass && klass->address) {
+        tab.filter = klass->getFullName();
+        if (il2cpp_class_get_image) {
+            auto img = il2cpp_class_get_image(klass->address);
+            if (img) {
+                tab.selectedImage = img;
+                for (size_t i = 0; i < tab.allImages.size(); i++) {
+                    if (tab.allImages[i] == img) {
+                        tab.selectedImageIndex = static_cast<int>(i);
+                        break;
+                    }
                 }
             }
         }
+        tab.FilterClasses(tab.filter);
     }
     return tab;
 }
@@ -865,11 +893,14 @@ void ClassesTab::CallerView(Class klass, Method method, const MethodParamList& p
                     resultStr = UnityDump::readString(result);
                 } else if (resultClass && UnityResolve::GetClassIsValueType(resultClass)) {
                     UnityResolve::GC::KeepAlive(static_cast<UnityResolve::UnityType::Object*>(result));
+                    resultObj = result;
                     auto toString = il2cpp_class_get_method_from_name(resultClass->address, "ToString", 0);
                     if (toString) {
                         void* exc = nullptr;
-                        auto str = il2cpp_runtime_invoke(toString, result, nullptr, &exc);
+                        auto thizz = UnityResolve::GetUnboxedValue(result);
+                        auto str = il2cpp_runtime_invoke(toString, thizz, nullptr, &exc);
                         if (str) resultStr = UnityDump::readString(str);
+                        else resultStr = "the call returned null";
                     }
                 } else if (resultClass) {
                     resultObj = result;
@@ -878,6 +909,7 @@ void ClassesTab::CallerView(Class klass, Method method, const MethodParamList& p
                         void* exc = nullptr;
                         auto str = il2cpp_runtime_invoke(toString, result, nullptr, &exc);
                         if (str) resultStr = UnityDump::readString(str);
+                        else resultStr = "the call returned null";
                     }
                 }
                 if (resultStr.empty()) {
@@ -1668,14 +1700,22 @@ void ClassesTab::ImGuiJson(Object rootObj) {
                         }
                     }
                 }
+            } else {
+                ImGui::Text("Unk %s %s", key.c_str(), value.type_name());
             }
+            ImGui::Separator();
         }
 
+        ImGui::ScrollWhenDraggingOnVoid();
+        ImGui::EndChild();
+
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::BeginChild("bottom");
         if (currentClass && currentObj) {
-            ImGui::Separator();
-            if (ImGui::Button("Call Methods", ImVec2(ImGui::GetContentRegionAvail().x - ImGui::GetStyle().FramePadding.x, 0)))
-                ImGui::OpenPopup("MethodCaller");
-            if (ImGui::BeginPopup("MethodCaller")) {
+            if (ImGui::Button("Methods", ImVec2(ImGui::GetContentRegionAvail().x - ImGui::GetStyle().FramePadding.x, 0)))
+                ImGui::OpenPopup("MethodPopup");
+            if (ImGui::BeginPopup("MethodPopup")) {
                 auto text = currentClass->name.c_str();
                 auto windowWidth = ImGui::GetWindowSize().x;
                 auto textWidth = ImGui::CalcTextSize(text).x;
@@ -1708,7 +1748,9 @@ void ClassesTab::ImGuiJson(Object rootObj) {
                 ImGui::Text("Do not touch the screen if it's freezing!");
                 ImGui::PopStyleColor();
                 if (ImGui::Button("Proceed", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+                    UnityDump::SetMaxArraySize(9999);
                     auto dump = UnityDump::dumpObject(currentObj);
+                    UnityDump::SetMaxArraySize(50);
                     Util::FileWriter file(fileName);
                     file.write(dump.json.dump(2, ' ').c_str());
                     ImGui::CloseCurrentPopup();

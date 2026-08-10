@@ -15,4 +15,5 @@ namespace UnityDump {
     DumpResult dumpObject(void* obj, const std::vector<std::string>& paths = {});
     std::string readString(void* strObj);
     std::string boxAndToString(void* klass, void* data);
+    void SetMaxArraySize(size_t size);
 }
