@@ -26,6 +26,9 @@ public:
     asmjit::Error movDouble(double value);
     asmjit::Error movBool(bool value);
     asmjit::Error movPtr(void* value);
+    asmjit::Error movVector2(float x, float y);
+    asmjit::Error movVector3(float x, float y, float z);
+    asmjit::Error movVector4(float x, float y, float z, float w);
 
     std::vector<uint8_t> patch();
     void restore(const std::vector<uint8_t>& originalBytes);

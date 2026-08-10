@@ -1025,8 +1025,12 @@ void ClassesTab::PatcherView(Class klass, Method method, const MethodParamList& 
                      tn == "System.UInt32" || tn == "System.UInt64" || tn == "System.Single" ||
                      tn == "System.Double" || tn == "System.Boolean" || tn == "System.String";
     bool isEnum = type->isEnum();
+    bool isValueType = tn == "UnityEngine.Vector2" || tn == "UnityEngine.Vector3" ||
+                       tn == "UnityEngine.Vector4" || tn == "UnityEngine.Quaternion" ||
+                       tn == "UnityEngine.Color" || tn == "UnityEngine.Rect" ||
+                       tn == "UnityEngine.Plane";
 
-    if (isNumeric || isEnum) {
+    if (isNumeric || isEnum || isValueType) {
         if (ImGui::Button("Patch return value"))
             ImGui::OpenPopup("HookReturnValuePopup");
         if (!o.text.empty()) {
@@ -1092,6 +1096,47 @@ void ClassesTab::PatcherView(Class klass, Method method, const MethodParamList& 
                             oMap[method->function].text = result;
                         }
                     }, type);
+                } else if (tn == "UnityEngine.Vector2") {
+                    Keyboard::Open("0 0", [method](const std::string& text) {
+                        if (text.empty()) return;
+                        struct { float x, y; } v{};
+                        sscanf(text.c_str(), "%f %f", &v.x, &v.y);
+                        Patcher p{method};
+                        p.movVector2(v.x, v.y);
+                        p.ret();
+                        if (oMap[method->function].bytes.empty()) {
+                            oMap[method->function].bytes = p.patch();
+                            oMap[method->function].text = text;
+                        }
+                    });
+                } else if (tn == "UnityEngine.Vector3") {
+                    Keyboard::Open("0 0 0", [method](const std::string& text) {
+                        if (text.empty()) return;
+                        struct { float x, y, z; } v{};
+                        sscanf(text.c_str(), "%f %f %f", &v.x, &v.y, &v.z);
+                        Patcher p{method};
+                        p.movVector3(v.x, v.y, v.z);
+                        p.ret();
+                        if (oMap[method->function].bytes.empty()) {
+                            oMap[method->function].bytes = p.patch();
+                            oMap[method->function].text = text;
+                        }
+                    });
+                } else if (tn == "UnityEngine.Vector4" || tn == "UnityEngine.Quaternion" ||
+                           tn == "UnityEngine.Color" || tn == "UnityEngine.Rect" ||
+                           tn == "UnityEngine.Plane") {
+                    Keyboard::Open("0 0 0 0", [method](const std::string& text) {
+                        if (text.empty()) return;
+                        struct { float x, y, z, w; } v{};
+                        sscanf(text.c_str(), "%f %f %f %f", &v.x, &v.y, &v.z, &v.w);
+                        Patcher p{method};
+                        p.movVector4(v.x, v.y, v.z, v.w);
+                        p.ret();
+                        if (oMap[method->function].bytes.empty()) {
+                            oMap[method->function].bytes = p.patch();
+                            oMap[method->function].text = text;
+                        }
+                    });
                 } else {
                     auto typ = type;
                     Keyboard::Open([typ, method](const std::string& text) {

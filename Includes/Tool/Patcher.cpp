@@ -137,6 +137,60 @@ Error Patcher::movPtr(void* value)
     return kErrorOk;
 }
 
+Error Patcher::movVector2(float x, float y)
+{
+    union { float f; uint32_t i; } fb;
+    fb.f = x;
+    assembler.mov(a64::w1, static_cast<uint16_t>(fb.i));
+    assembler.movk(a64::w1, static_cast<uint16_t>(fb.i >> 16), a64::lsl(16));
+    assembler.fmov(a64::s0, a64::w1);
+    fb.f = y;
+    assembler.mov(a64::w1, static_cast<uint16_t>(fb.i));
+    assembler.movk(a64::w1, static_cast<uint16_t>(fb.i >> 16), a64::lsl(16));
+    assembler.fmov(a64::s1, a64::w1);
+    return kErrorOk;
+}
+
+Error Patcher::movVector3(float x, float y, float z)
+{
+    union { float f; uint32_t i; } fb;
+    fb.f = x;
+    assembler.mov(a64::w1, static_cast<uint16_t>(fb.i));
+    assembler.movk(a64::w1, static_cast<uint16_t>(fb.i >> 16), a64::lsl(16));
+    assembler.fmov(a64::s0, a64::w1);
+    fb.f = y;
+    assembler.mov(a64::w1, static_cast<uint16_t>(fb.i));
+    assembler.movk(a64::w1, static_cast<uint16_t>(fb.i >> 16), a64::lsl(16));
+    assembler.fmov(a64::s1, a64::w1);
+    fb.f = z;
+    assembler.mov(a64::w1, static_cast<uint16_t>(fb.i));
+    assembler.movk(a64::w1, static_cast<uint16_t>(fb.i >> 16), a64::lsl(16));
+    assembler.fmov(a64::s2, a64::w1);
+    return kErrorOk;
+}
+
+Error Patcher::movVector4(float x, float y, float z, float w)
+{
+    union { float f; uint32_t i; } fb;
+    fb.f = x;
+    assembler.mov(a64::w1, static_cast<uint16_t>(fb.i));
+    assembler.movk(a64::w1, static_cast<uint16_t>(fb.i >> 16), a64::lsl(16));
+    assembler.fmov(a64::s0, a64::w1);
+    fb.f = y;
+    assembler.mov(a64::w1, static_cast<uint16_t>(fb.i));
+    assembler.movk(a64::w1, static_cast<uint16_t>(fb.i >> 16), a64::lsl(16));
+    assembler.fmov(a64::s1, a64::w1);
+    fb.f = z;
+    assembler.mov(a64::w1, static_cast<uint16_t>(fb.i));
+    assembler.movk(a64::w1, static_cast<uint16_t>(fb.i >> 16), a64::lsl(16));
+    assembler.fmov(a64::s2, a64::w1);
+    fb.f = w;
+    assembler.mov(a64::w1, static_cast<uint16_t>(fb.i));
+    assembler.movk(a64::w1, static_cast<uint16_t>(fb.i >> 16), a64::lsl(16));
+    assembler.fmov(a64::s3, a64::w1);
+    return kErrorOk;
+}
+
 #else
 
 void Patcher::emit16(uint16_t val)
@@ -280,6 +334,60 @@ Error Patcher::movPtr(void* value)
     uintptr_t v = reinterpret_cast<uintptr_t>(value);
     emitMovW(0, static_cast<uint16_t>(v));
     emitMovT(0, static_cast<uint16_t>(v >> 16));
+    return kErrorOk;
+}
+
+Error Patcher::movVector2(float x, float y)
+{
+    union { float f; uint32_t i; } fb;
+    fb.f = x;
+    emitMovW(0, static_cast<uint16_t>(fb.i));
+    emitMovT(0, static_cast<uint16_t>(fb.i >> 16));
+    emit32(0xEE000A10);
+    fb.f = y;
+    emitMovW(0, static_cast<uint16_t>(fb.i));
+    emitMovT(0, static_cast<uint16_t>(fb.i >> 16));
+    emit32(0xEE010A10);
+    return kErrorOk;
+}
+
+Error Patcher::movVector3(float x, float y, float z)
+{
+    union { float f; uint32_t i; } fb;
+    fb.f = x;
+    emitMovW(0, static_cast<uint16_t>(fb.i));
+    emitMovT(0, static_cast<uint16_t>(fb.i >> 16));
+    emit32(0xEE000A10);
+    fb.f = y;
+    emitMovW(0, static_cast<uint16_t>(fb.i));
+    emitMovT(0, static_cast<uint16_t>(fb.i >> 16));
+    emit32(0xEE010A10);
+    fb.f = z;
+    emitMovW(0, static_cast<uint16_t>(fb.i));
+    emitMovT(0, static_cast<uint16_t>(fb.i >> 16));
+    emit32(0xEE020A10);
+    return kErrorOk;
+}
+
+Error Patcher::movVector4(float x, float y, float z, float w)
+{
+    union { float f; uint32_t i; } fb;
+    fb.f = x;
+    emitMovW(0, static_cast<uint16_t>(fb.i));
+    emitMovT(0, static_cast<uint16_t>(fb.i >> 16));
+    emit32(0xEE000A10);
+    fb.f = y;
+    emitMovW(0, static_cast<uint16_t>(fb.i));
+    emitMovT(0, static_cast<uint16_t>(fb.i >> 16));
+    emit32(0xEE010A10);
+    fb.f = z;
+    emitMovW(0, static_cast<uint16_t>(fb.i));
+    emitMovT(0, static_cast<uint16_t>(fb.i >> 16));
+    emit32(0xEE020A10);
+    fb.f = w;
+    emitMovW(0, static_cast<uint16_t>(fb.i));
+    emitMovT(0, static_cast<uint16_t>(fb.i >> 16));
+    emit32(0xEE030A10);
     return kErrorOk;
 }
 
