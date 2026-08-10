@@ -201,6 +201,7 @@ void Tool::Init() {
 }
 
 void Tool::Draw() {
+    [[maybe_unused]] static auto _ = [] { CalculateSomething(); return true; }();
     if (ImGui::BeginTabBar("tabber", ImGuiTabBarFlags_AutoSelectNewTabs |
                          ImGuiTabBarFlags_FittingPolicyScroll |
                          ImGuiTabBarFlags_TabListPopupButton)) {
@@ -266,6 +267,20 @@ void Tool::Dumper() {
             }
         }
     }
+}
+
+void Tool::CalculateSomething() {
+    constexpr auto* placeholder = "BRUH";
+    int max = 10;
+    for (int i = 0; i < 100; i++) {
+        auto labelSize = ImGui::CalcTextSize(placeholder);
+        ImVec2 labellPos{20, 150 + (labelSize.y * i)};
+        if (labellPos.y >= ImGui::GetIO().DisplaySize.y) {
+            max = i - 5;
+            break;
+        }
+    }
+    HookerData::visited = RingBuffer<HookerTrace>(max);
 }
 
 void Tool::GameObjectx() {
@@ -1581,38 +1596,60 @@ void ClassesTab::ImGuiJson(Object rootObj) {
                     auto fieldAddr = findFieldAddress(currentClass, key);
                     if (fieldAddr) {
                         auto fieldType = il2cpp_field_get_type(fieldAddr);
-                        auto typeName = fieldType ? il2cpp_type_get_name(fieldType) : nullptr;
-                        std::string tn = typeName ? typeName : "";
-                        if (typeName) il2cpp_free(typeName);
-                        Keyboard::Open(std::to_string(value.get<int64_t>()).c_str(),
-                            [currentObj, fieldAddr, tn](const std::string& text) {
-                                if (tn == "System.Int16") {
-                                    int16_t v = static_cast<int16_t>(std::stoi(text));
-                                    il2cpp_field_set_value(currentObj, fieldAddr, &v);
-                                } else if (tn == "System.UInt16") {
-                                    uint16_t v = static_cast<uint16_t>(std::stoi(text));
-                                    il2cpp_field_set_value(currentObj, fieldAddr, &v);
-                                } else if (tn == "System.Int32") {
-                                    int32_t v = std::stoi(text);
-                                    il2cpp_field_set_value(currentObj, fieldAddr, &v);
-                                } else if (tn == "System.UInt32") {
-                                    uint32_t v = static_cast<uint32_t>(std::stoul(text));
-                                    il2cpp_field_set_value(currentObj, fieldAddr, &v);
-                                } else if (tn == "System.Int64") {
-                                    int64_t v = std::stoll(text);
-                                    il2cpp_field_set_value(currentObj, fieldAddr, &v);
-                                } else if (tn == "System.UInt64") {
-                                    uint64_t v = std::stoull(text);
-                                    il2cpp_field_set_value(currentObj, fieldAddr, &v);
-                                } else if (tn == "System.SByte") {
-                                    int8_t v = static_cast<int8_t>(std::stoi(text));
-                                    il2cpp_field_set_value(currentObj, fieldAddr, &v);
-                                } else if (tn == "System.Byte") {
-                                    uint8_t v = static_cast<uint8_t>(std::stoul(text));
-                                    il2cpp_field_set_value(currentObj, fieldAddr, &v);
+                        auto typeKind = fieldType ? il2cpp_type_get_type(fieldType) : 0;
+                        if (typeKind == IL2CPP_TYPE_ENUM) {
+                            static UnityResolve::Type enumType;
+                            enumType.address = fieldType;
+                            localPoper.Open("EnumSelector", [fieldAddr, fieldType, currentObj](const std::string& result) {
+                                auto klass = il2cpp_class_from_type(fieldType);
+                                if (!klass) { doRefresh = true; return; }
+                                auto enumClass = UnityResolve::GetOrCreateClass(klass);
+                                if (!enumClass) { doRefresh = true; return; }
+                                auto fields = enumClass->getFields(false);
+                                for (auto& f : fields) {
+                                    if (f && f->address && f->name == result) {
+                                        int val = 0;
+                                        il2cpp_field_static_get_value(f->address, &val);
+                                        il2cpp_field_set_value(currentObj, fieldAddr, &val);
+                                        break;
+                                    }
                                 }
                                 doRefresh = true;
-                            });
+                            }, &enumType);
+                        } else {
+                            auto typeName = fieldType ? il2cpp_type_get_name(fieldType) : nullptr;
+                            std::string tn = typeName ? typeName : "";
+                            if (typeName) il2cpp_free(typeName);
+                            Keyboard::Open(std::to_string(value.get<int64_t>()).c_str(),
+                                [currentObj, fieldAddr, tn](const std::string& text) {
+                                    if (tn == "System.Int16") {
+                                        int16_t v = static_cast<int16_t>(std::stoi(text));
+                                        il2cpp_field_set_value(currentObj, fieldAddr, &v);
+                                    } else if (tn == "System.UInt16") {
+                                        uint16_t v = static_cast<uint16_t>(std::stoi(text));
+                                        il2cpp_field_set_value(currentObj, fieldAddr, &v);
+                                    } else if (tn == "System.Int32") {
+                                        int32_t v = std::stoi(text);
+                                        il2cpp_field_set_value(currentObj, fieldAddr, &v);
+                                    } else if (tn == "System.UInt32") {
+                                        uint32_t v = static_cast<uint32_t>(std::stoul(text));
+                                        il2cpp_field_set_value(currentObj, fieldAddr, &v);
+                                    } else if (tn == "System.Int64") {
+                                        int64_t v = std::stoll(text);
+                                        il2cpp_field_set_value(currentObj, fieldAddr, &v);
+                                    } else if (tn == "System.UInt64") {
+                                        uint64_t v = std::stoull(text);
+                                        il2cpp_field_set_value(currentObj, fieldAddr, &v);
+                                    } else if (tn == "System.SByte") {
+                                        int8_t v = static_cast<int8_t>(std::stoi(text));
+                                        il2cpp_field_set_value(currentObj, fieldAddr, &v);
+                                    } else if (tn == "System.Byte") {
+                                        uint8_t v = static_cast<uint8_t>(std::stoul(text));
+                                        il2cpp_field_set_value(currentObj, fieldAddr, &v);
+                                    }
+                                    doRefresh = true;
+                                });
+                        }
                     }
                 }
             }

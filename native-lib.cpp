@@ -2,6 +2,8 @@
 #include <Tool/Tool.hpp>
 #include <Tool/Keyboard.hpp>
 #include <Tool/HookerData.hpp>
+#include <Tool/Unity.hpp>
+#include <Tool/Config.hpp>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -231,6 +233,7 @@ void DrawMenu() {
                     bool selected = si == selectedScale;
                     if (ImGui::Selectable(possibleScale[si], selected)) {
                         selectedScale = si;
+                        ConfigSet("selectedScale", selectedScale);
                         doChangeScale = true;
                     }
                     if (selected)
@@ -267,6 +270,12 @@ void DrawMenu() {
         ImGui::EndTabBar();
     }
 
+    static bool doCalculate = false;
+    if (doCalculate) {
+        doCalculate = false;
+        Tool::CalculateSomething();
+    }
+
     if (doChangeScale) {
         doChangeScale = false;
         static auto font = ImGui::GetFont();
@@ -274,6 +283,7 @@ void DrawMenu() {
         auto style = initialStyle;
         style.ScaleAllSizes(font->Scale);
         ImGui::GetStyle() = style;
+        doCalculate = true;
         if (fullScreen)
             resetWindow = true;
     }
@@ -358,7 +368,14 @@ void *MainThread(void *) {
     if (handle) {
         il2cpp_api_init(handle);
         UnityResolve::EnsureAttached();
+        Unity::HookInput();
         Keyboard::Init();
+        ConfigInit();
+        selectedScale = ConfigGet<int>("selectedScale", selectedScale);
+        if (selectedScale < 0 || selectedScale >= (int)scaleFactors.size()) {
+            selectedScale = 3;
+            ConfigSet("selectedScale", selectedScale);
+        }
         Tool::Init();
         doChangeScale = true;
         toolReady = true;
