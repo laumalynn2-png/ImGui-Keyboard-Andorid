@@ -489,11 +489,9 @@ void ClassesTab::ImGuiObjectSelector(int id, Class klass, const char* prefix,
     auto& scanning = scanState[klass->address];
     if (ImGui::Button("Find Objects")) {
         scanning = true;
-        std::thread([&scanning, klass]() {
-            auto found = UnityResolve::GC::FindObjects(klass);
-            objectMap[klass] = std::vector<Object>(found.begin(), found.end());
-            scanning = false;
-        }).detach();
+        auto found = UnityResolve::GC::FindObjects(klass);
+        objectMap[klass] = std::vector<Object>(found.begin(), found.end());
+        scanning = false;
     }
     ImGui::PopID();
 
