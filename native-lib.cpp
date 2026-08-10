@@ -327,6 +327,7 @@ EGLBoolean _eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     ImGui::NewFrame();
     ImGui::SetNextWindowSize(ImVec2((float)glWidth / 2, (float)glHeight / 2), ImGuiCond_Once);
     Keyboard::Update();
+    Unity::ProcessInput();
     DrawMenu();
     {
         auto now = std::chrono::high_resolution_clock::now();

@@ -44,4 +44,5 @@ struct UnityEngine_Touch
 namespace Unity
 {
     void HookInput();
+    void ProcessInput();
 }
