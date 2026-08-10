@@ -83,6 +83,40 @@ static void* findFieldAddress(UnityResolve::Class* klass, const std::string& nam
     return nullptr;
 }
 
+static void ensureIfValueType(void* currentObj, const std::vector<std::string>& paths, void* rootObj) {
+    if (!currentObj || currentObj == rootObj || paths.empty()) return;
+    if (!il2cpp_object_get_class || !il2cpp_class_is_valuetype || !il2cpp_object_unbox || !il2cpp_field_set_value) return;
+    auto klass = il2cpp_object_get_class(currentObj);
+    if (!klass || !il2cpp_class_is_valuetype(klass)) return;
+
+    if (paths.size() > 1) {
+        std::vector<std::string> parentPaths(paths.begin(), paths.end() - 1);
+        auto parentResult = UnityDump::dumpObject(rootObj, parentPaths);
+        if (parentResult.obj && parentResult.klass) {
+            auto fieldAddr = findFieldAddress(parentResult.klass, paths.back());
+            if (fieldAddr) {
+                auto unboxed = il2cpp_object_unbox(currentObj);
+                if (unboxed)
+                    il2cpp_field_set_value(parentResult.obj, fieldAddr, unboxed);
+            }
+        }
+        ensureIfValueType(parentResult.obj, parentPaths, rootObj);
+    } else {
+        auto rootKlass = il2cpp_object_get_class(rootObj);
+        if (rootKlass) {
+            auto rootClass = UnityResolve::GetOrCreateClass(rootKlass);
+            if (rootClass) {
+                auto fieldAddr = findFieldAddress(rootClass, paths.back());
+                if (fieldAddr) {
+                    auto unboxed = il2cpp_object_unbox(currentObj);
+                    if (unboxed)
+                        il2cpp_field_set_value(rootObj, fieldAddr, unboxed);
+                }
+            }
+        }
+    }
+}
+
 static int getEnumValue(UnityResolve::Type* type, const std::string& fieldName) {
     auto klass = type->getClass();
     if (!klass) return 0;
@@ -100,7 +134,7 @@ void Tool::ConfigSave() {
         to_json(tj, tab);
         j.push_back(tj);
     }
-    Util::FileWriter file("tool_config.json");
+    Util::FileWriter file("class_tabs.json");
     file.write(j.dump(2, ' ').c_str());
 }
 
@@ -162,7 +196,7 @@ ClassesTab& Tool::OpenNewTab() {
     void* img = nullptr;
     int imgIdx = 0;
     for (auto& c : s_tabs) {
-        if (c.setOpenedTab) {
+        if (c.currentlyOpened) {
             img = c.selectedImage;
             imgIdx = c.selectedImageIndex;
             break;
@@ -201,7 +235,7 @@ ClassesTab& Tool::OpenNewTabFromClass(UnityResolve::Class* klass) {
 
 void Tool::ConfigLoad() {
     try {
-        Util::FileReader configFile("tool_config.json");
+        Util::FileReader configFile("class_tabs.json");
         nlohmann::ordered_json j = nlohmann::ordered_json::parse(configFile.read());
         s_tabs.clear();
         for (auto& tabJ : j) {
@@ -210,13 +244,13 @@ void Tool::ConfigLoad() {
             s_tabs.push_back(std::move(tab));
         }
     } catch (nlohmann::json::exception& e) {
-        LOGE("Failed to load tool_config.json: %s", e.what());
+        LOGE("Failed to load class_tabs.json: %s", e.what());
         ConfigSave();
     }
 }
 
 void Tool::ConfigInit() {
-    Util::FileReader config("tool_config.json");
+    Util::FileReader config("class_tabs.json");
     if (config.exists()) {
         ConfigLoad();
     } else {
@@ -233,6 +267,33 @@ void Tool::Init() {
         tab.FilterClasses(tab.filter);
     }
     Frida::Init();
+
+    {
+        std::lock_guard<std::mutex> lock(UnityResolve::g_MethodsMtx);
+        UnityResolve::g_Methods.clear();
+        for (auto* assembly : UnityResolve::assembly) {
+            if (!assembly || !assembly->address) continue;
+            auto image = il2cpp_assembly_get_image(assembly->address);
+            if (!image) continue;
+            auto count = il2cpp_image_get_class_count(image);
+            for (decltype(count) i = 0; i < count; i++) {
+                auto klass = il2cpp_image_get_class(image, i);
+                if (!klass) continue;
+                auto* cls = UnityResolve::GetOrCreateClass(klass);
+                if (!cls || !cls->address) continue;
+                auto methods = cls->getMethods("", false);
+                for (auto* m : methods) {
+                    if (m && m->function)
+                        UnityResolve::g_Methods.push_back(m);
+                }
+            }
+        }
+        std::sort(UnityResolve::g_Methods.begin(), UnityResolve::g_Methods.end(),
+            [](UnityResolve::Method* a, UnityResolve::Method* b) {
+                return a->function < b->function;
+            });
+    }
+    LOGI("g_Methods populated: %zu methods", UnityResolve::g_Methods.size());
 }
 
 void Tool::Draw() {
@@ -531,9 +592,11 @@ void ClassesTab::ImGuiObjectSelector(int id, Class klass, const char* prefix,
     auto& scanning = scanState[klass->address];
     if (ImGui::Button("Find Objects")) {
         scanning = true;
-        auto found = UnityResolve::GC::FindObjects(klass);
-        objectMap[klass] = std::vector<Object>(found.begin(), found.end());
-        scanning = false;
+        std::thread([klass]() {
+            auto found = UnityResolve::GC::FindObjects(klass);
+            ClassesTab::objectMap[klass] = std::vector<ClassesTab::Object>(found.begin(), found.end());
+            scanState[klass->address] = false;
+        }).detach();
     }
     ImGui::PopID();
 
@@ -1599,9 +1662,10 @@ void ClassesTab::ImGuiJson(Object rootObj) {
                         auto fieldType = il2cpp_field_get_type(fieldAddr);
                         auto typeKind = fieldType ? il2cpp_type_get_type(fieldType) : 0;
                         if (typeKind == IL2CPP_TYPE_STRING) {
-                            Keyboard::Open(text.c_str(), [currentObj, fieldAddr](const std::string& val) {
+                            Keyboard::Open(text.c_str(), [this, rootObj, currentObj, fieldAddr](const std::string& val) {
                                 auto newStr = il2cpp_string_new(val.c_str());
                                 il2cpp_field_set_value(currentObj, fieldAddr, &newStr);
+                                ensureIfValueType(currentObj, getJsonPaths(rootObj), rootObj);
                                 doRefresh = true;
                             });
                         }
@@ -1612,9 +1676,10 @@ void ClassesTab::ImGuiJson(Object rootObj) {
                 if (ImGui::IsItemClicked() && currentClass && currentObj) {
                     auto fieldAddr = findFieldAddress(currentClass, key);
                     if (fieldAddr) {
-                        localPoper.Open("BooleanSelector", [currentObj, fieldAddr](const std::string& val) {
+                        localPoper.Open("BooleanSelector", [this, rootObj, currentObj, fieldAddr](const std::string& val) {
                             int b = val == "True" ? 1 : 0;
                             il2cpp_field_set_value(currentObj, fieldAddr, &b);
+                            ensureIfValueType(currentObj, getJsonPaths(rootObj), rootObj);
                             doRefresh = true;
                         });
                     }
@@ -1629,7 +1694,7 @@ void ClassesTab::ImGuiJson(Object rootObj) {
                         std::string tn = typeName ? typeName : "";
                         if (typeName) il2cpp_free(typeName);
                         Keyboard::Open(std::to_string(value.get<float>()).c_str(),
-                            [currentObj, fieldAddr, tn](const std::string& text) {
+                            [this, rootObj, currentObj, fieldAddr, tn](const std::string& text) {
                                 if (tn == "System.Single") {
                                     float v = std::stof(text);
                                     il2cpp_field_set_value(currentObj, fieldAddr, &v);
@@ -1637,6 +1702,7 @@ void ClassesTab::ImGuiJson(Object rootObj) {
                                     double v = std::stod(text);
                                     il2cpp_field_set_value(currentObj, fieldAddr, &v);
                                 }
+                                ensureIfValueType(currentObj, getJsonPaths(rootObj), rootObj);
                                 doRefresh = true;
                             });
                     }
@@ -1651,7 +1717,7 @@ void ClassesTab::ImGuiJson(Object rootObj) {
                         if (typeKind == IL2CPP_TYPE_ENUM) {
                             static UnityResolve::Type enumType;
                             enumType.address = fieldType;
-                            localPoper.Open("EnumSelector", [fieldAddr, fieldType, currentObj](const std::string& result) {
+                            localPoper.Open("EnumSelector", [this, rootObj, fieldAddr, fieldType, currentObj](const std::string& result) {
                                 auto klass = il2cpp_class_from_type(fieldType);
                                 if (!klass) { doRefresh = true; return; }
                                 auto enumClass = UnityResolve::GetOrCreateClass(klass);
@@ -1665,6 +1731,7 @@ void ClassesTab::ImGuiJson(Object rootObj) {
                                         break;
                                     }
                                 }
+                                ensureIfValueType(currentObj, getJsonPaths(rootObj), rootObj);
                                 doRefresh = true;
                             }, &enumType);
                         } else {
@@ -1672,7 +1739,7 @@ void ClassesTab::ImGuiJson(Object rootObj) {
                             std::string tn = typeName ? typeName : "";
                             if (typeName) il2cpp_free(typeName);
                             Keyboard::Open(std::to_string(value.get<int64_t>()).c_str(),
-                                [currentObj, fieldAddr, tn](const std::string& text) {
+                                [this, rootObj, currentObj, fieldAddr, tn](const std::string& text) {
                                     if (tn == "System.Int16") {
                                         int16_t v = static_cast<int16_t>(std::stoi(text));
                                         il2cpp_field_set_value(currentObj, fieldAddr, &v);
@@ -1698,6 +1765,7 @@ void ClassesTab::ImGuiJson(Object rootObj) {
                                         uint8_t v = static_cast<uint8_t>(std::stoul(text));
                                         il2cpp_field_set_value(currentObj, fieldAddr, &v);
                                     }
+                                    ensureIfValueType(currentObj, getJsonPaths(rootObj), rootObj);
                                     doRefresh = true;
                                 });
                         }
@@ -1718,6 +1786,7 @@ void ClassesTab::ImGuiJson(Object rootObj) {
         if (currentClass && currentObj) {
             if (ImGui::Button("Methods", ImVec2(ImGui::GetContentRegionAvail().x - ImGui::GetStyle().FramePadding.x, 0)))
                 ImGui::OpenPopup("MethodPopup");
+            ImGui::SetNextWindowSizeConstraints(ImVec2(io.DisplaySize.x / 1.2f, 0), ImVec2(io.DisplaySize.x / 1.2f, io.DisplaySize.y / 2));
             if (ImGui::BeginPopup("MethodPopup")) {
                 auto text = currentClass->name.c_str();
                 auto windowWidth = ImGui::GetWindowSize().x;
@@ -1752,11 +1821,15 @@ void ClassesTab::ImGuiJson(Object rootObj) {
                 ImGui::PopStyleColor();
                 if (ImGui::Button("Proceed", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
                     UnityDump::SetMaxArraySize(9999);
-                    auto dump = UnityDump::dumpObject(currentObj);
+                    try {
+                        auto dump = UnityDump::dumpObject(currentObj);
+                        Util::FileWriter file(fileName);
+                        file.write(dump.json.dump(2, ' ').c_str());
+                        ImGui::CloseCurrentPopup();
+                    } catch (std::exception& e) {
+                        LOGE("Dump to file failed: %s", e.what());
+                    }
                     UnityDump::SetMaxArraySize(50);
-                    Util::FileWriter file(fileName);
-                    file.write(dump.json.dump(2, ' ').c_str());
-                    ImGui::CloseCurrentPopup();
                 }
                 ImGui::EndPopup();
             }
@@ -1852,6 +1925,8 @@ void from_json(const nlohmann::ordered_json& j, ClassesTab& p) {
     j.at("includeAllImages").get_to(p.includeAllImages);
     j.at("caseSensitive").get_to(p.caseSensitive);
     std::string name = j.at("selectedImage").get<std::string>();
+    if (name.length() >= 4 && name.compare(name.length() - 4, 4, ".dll") == 0)
+        name.erase(name.length() - 4);
     auto images = getAllImages();
     for (size_t i = 0; i < images.size(); i++) {
         if (imageName(images[i]) == name) {
