@@ -22,6 +22,7 @@
 #define DO_API(r, n, p) extern r (*n) p
 #include "il2cpp-api-functions.h"
 #undef DO_API
+#include "il2cpp-tabledefs.h"
 
 extern void il2cpp_api_init(void* handle);
 
@@ -218,7 +219,7 @@ public:
 						result->type->size = -1;
 						result->klass = this;
 						result->offset = il2cpp_field_get_offset(field);
-						result->static_field = result->offset <= 0;
+						result->static_field = (il2cpp_field_get_flags(field) & FIELD_ATTRIBUTE_STATIC) != 0;
 						return static_cast<RType*>(result);
 					}
 				}
@@ -372,7 +373,7 @@ public:
 					result->type->size = -1;
 					result->klass = this;
 					result->offset = il2cpp_field_get_offset(field);
-					result->static_field = result->offset <= 0;
+					result->static_field = (il2cpp_field_get_flags(field) & FIELD_ATTRIBUTE_STATIC) != 0;
 					fields.push_back(result);
 				}
 			}

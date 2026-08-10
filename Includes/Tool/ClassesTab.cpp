@@ -319,7 +319,10 @@ void Tool::CalculateSomething() {
             break;
         }
     }
-    HookerData::visited = RingBuffer<HookerTrace>(max);
+    {
+        std::lock_guard<std::mutex> lock(HookerData::traceMtx);
+        HookerData::visited = RingBuffer<HookerTrace>(max);
+    }
 }
 
 void Tool::GameObjectx() {

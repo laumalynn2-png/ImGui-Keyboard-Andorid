@@ -240,7 +240,7 @@ std::string dump_field(void *klass) {
         }
         auto field_type = il2cpp_field_get_type(field);
         auto field_class = il2cpp_class_from_type(field_type);
-        outPut << il2cpp_class_get_name(field_class) << " " << il2cpp_field_get_name(field);
+        outPut << (field_class ? il2cpp_class_get_name(field_class) : "Unknown") << " " << il2cpp_field_get_name(field);
         if (attrs & FIELD_ATTRIBUTE_LITERAL && is_enum) {
             uint64_t val = 0;
             il2cpp_field_static_get_value(field, &val);
@@ -485,7 +485,7 @@ std::string UnityResolve::getUnityVersion() {
 	if (!appClass) appClass = FindClass("UnityEngine.Application");
 	if (!method && appClass && appClass->address) method = appClass->Get<Method>("get_unityVersion");
 	if (method) {
-		auto str = method->Invoke<UnityType::String*>();
+		auto str = method->Invoke<UnityType::String*>(method->address);
 		if (str) return str->ToString();
 	}
 	return "unknown";
@@ -503,7 +503,7 @@ std::string UnityResolve::getPackageName() {
 	if (!appClass) appClass = FindClass("UnityEngine.Application");
 	if (!method && appClass && appClass->address) method = appClass->Get<Method>("get_identifier");
 	if (method) {
-		auto str = method->Invoke<UnityType::String*>();
+		auto str = method->Invoke<UnityType::String*>(method->address);
 		if (str) return str->ToString();
 	}
 	return "unknown";
@@ -515,7 +515,7 @@ std::string UnityResolve::getGameVersion() {
 	if (!appClass) appClass = FindClass("UnityEngine.Application");
 	if (!method && appClass && appClass->address) method = appClass->Get<Method>("get_version");
 	if (method) {
-		auto str = method->Invoke<UnityType::String*>();
+		auto str = method->Invoke<UnityType::String*>(method->address);
 		if (str) return str->ToString();
 	}
 	return "unknown";
@@ -527,7 +527,7 @@ std::string UnityResolve::getProductName() {
 	if (!appClass) appClass = FindClass("UnityEngine.Application");
 	if (!method && appClass && appClass->address) method = appClass->Get<Method>("get_productName");
 	if (method) {
-		auto str = method->Invoke<UnityType::String*>();
+		auto str = method->Invoke<UnityType::String*>(method->address);
 		if (str) return str->ToString();
 	}
 	return "unknown";
