@@ -117,15 +117,26 @@ static nlohmann::ordered_json dumpValue(void* obj, size_t offset, void* fieldTyp
             visited.insert(arrObj);
             nlohmann::ordered_json arr = nlohmann::ordered_json::array();
             auto len = il2cpp_array_length ? il2cpp_array_length(arrObj) : 0;
+            constexpr size_t arrayDataOffset = sizeof(void*) == 8 ? 32 : 16;
+            auto arrClass = il2cpp_class_from_type ? il2cpp_class_from_type(fieldType) : nullptr;
+            auto elemClass = (arrClass && il2cpp_class_get_element_class) ? il2cpp_class_get_element_class(arrClass) : nullptr;
+            bool elemIsValueType = elemClass && il2cpp_class_is_valuetype && il2cpp_class_is_valuetype(elemClass);
             for (uint32_t i = 0; i < len && i < 50; i++) {
-                auto elemPtr = reinterpret_cast<char*>(arrObj) + 16 + i * sizeof(void*);
-                auto elem = *reinterpret_cast<void**>(elemPtr);
-                if (!elem) { arr.push_back("null"); continue; }
-                if (visited.count(elem)) { arr.push_back("circular"); continue; }
-                visited.insert(elem);
-                auto elemClass = il2cpp_object_get_class ? il2cpp_object_get_class(elem) : nullptr;
-                arr.push_back(elemClass ? dumpObjectInner(elem, elemClass, visited) : "null");
-                visited.erase(elem);
+                if (elemIsValueType && elemClass) {
+                    uint32_t align = 0;
+                    int elemSize = il2cpp_class_value_size ? il2cpp_class_value_size(elemClass, &align) : (int)sizeof(void*);
+                    if (elemSize <= 0) elemSize = (int)sizeof(void*);
+                    arr.push_back(boxAndToString(elemClass, reinterpret_cast<char*>(arrObj) + arrayDataOffset + i * (size_t)elemSize));
+                } else {
+                    auto elemPtr = reinterpret_cast<char*>(arrObj) + arrayDataOffset + i * sizeof(void*);
+                    auto elem = *reinterpret_cast<void**>(elemPtr);
+                    if (!elem) { arr.push_back("null"); continue; }
+                    if (visited.count(elem)) { arr.push_back("circular"); continue; }
+                    visited.insert(elem);
+                    auto childClass = il2cpp_object_get_class ? il2cpp_object_get_class(elem) : nullptr;
+                    arr.push_back(childClass ? dumpObjectInner(elem, childClass, visited) : "null");
+                    visited.erase(elem);
+                }
             }
             visited.erase(arrObj);
             return arr;

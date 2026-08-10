@@ -363,11 +363,14 @@ void *MainThread(void *) {
         usleep(100000);
 
     void *handle = xdl_open("libil2cpp.so", XDL_DEFAULT);
+    bool fromXdl = handle != nullptr;
     if (!handle)
         handle = dlopen("libil2cpp.so", RTLD_NOW);
 
     if (handle) {
         il2cpp_api_init(handle);
+        if (fromXdl) xdl_close(handle);
+        else dlclose(handle);
         UnityResolve::EnsureAttached();
         Unity::HookInput();
         Keyboard::Init();

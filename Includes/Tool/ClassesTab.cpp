@@ -30,7 +30,6 @@ std::unordered_map<ClassesTab::Class, bool> ClassesTab::states;
 PopUpSelector ClassesTab::poper;
 
 static std::unordered_map<void*, HookerData> s_hookerMap;
-static std::mutex s_hookerMtx;
 static std::list<ClassesTab> s_tabs;
 
 static std::vector<void*> getAllImages() {
@@ -103,7 +102,9 @@ void Tool::ConfigSave() {
 bool Tool::ToggleHooker(UnityResolve::Method* method, int state) {
     if (!method || !method->function) return false;
     auto ptr = method->function;
-    std::lock_guard<std::mutex> lock(s_hookerMtx);
+    auto oIt = oMap.find(ptr);
+    if (oIt != oMap.end() && !oIt->second.bytes.empty()) return false;
+    std::lock_guard<std::mutex> lock(HookerData::traceMtx);
     auto it = s_hookerMap.find(ptr);
     bool hooked = it != s_hookerMap.end();
     if (state == -1) {
@@ -114,7 +115,10 @@ bool Tool::ToggleHooker(UnityResolve::Method* method, int state) {
         }
         auto& data = s_hookerMap[ptr];
         data.method = method;
-        Frida::Trace(method, &data);
+        if (!Frida::Trace(method, &data)) {
+            s_hookerMap.erase(ptr);
+            return false;
+        }
         return true;
     }
     if (state == 0) {
@@ -127,7 +131,10 @@ bool Tool::ToggleHooker(UnityResolve::Method* method, int state) {
     if (!hooked) {
         auto& data = s_hookerMap[ptr];
         data.method = method;
-        Frida::Trace(method, &data);
+        if (!Frida::Trace(method, &data)) {
+            s_hookerMap.erase(ptr);
+            return false;
+        }
         return true;
     }
     return true;
@@ -247,10 +254,14 @@ void Tool::Dumper() {
     }
     if (dumping) {
         static char outFile[256];
-        snprintf(outFile, sizeof(outFile), "%s/%s_%s.cs",
-                 UnityResolve::getDataPath().c_str(),
-                 UnityResolve::getPackageName().c_str(),
-                 UnityResolve::getGameVersion().c_str());
+        static bool outFileInit = false;
+        if (!outFileInit) {
+            snprintf(outFile, sizeof(outFile), "%s/%s_%s.cs",
+                     UnityResolve::getDataPath().c_str(),
+                     UnityResolve::getPackageName().c_str(),
+                     UnityResolve::getGameVersion().c_str());
+            outFileInit = true;
+        }
         static bool dumped = false;
         static std::future<void> dumpFuture = std::async(std::launch::async, [] {
             il2cpp_dump(std::string(outFile), [](const char* name, int, int) {
@@ -337,15 +348,15 @@ void Tool::GameObjectx() {
 }
 
 size_t Tool::GetHookerCount() {
-    std::lock_guard<std::mutex> lock(s_hookerMtx);
+    std::lock_guard<std::mutex> lock(HookerData::traceMtx);
     return s_hookerMap.size();
 }
 
 void Tool::DrawTracerTab(bool& changeToToolsTab) {
-    ImGui::Text("Traced method count : %zu", s_hookerMap.size());
+    ImGui::Text("Traced method count : %zu", Tool::GetHookerCount());
     std::vector<HookerData*> sortedHooker;
     {
-        std::lock_guard<std::mutex> lock(s_hookerMtx);
+        std::lock_guard<std::mutex> lock(HookerData::traceMtx);
         for (auto& [ptr, data] : s_hookerMap) {
             if (data.hitCount > 0)
                 sortedHooker.push_back(&data);
@@ -598,15 +609,19 @@ void ClassesTab::ImGuiObjectSelector(int id, Class klass, const char* prefix,
 
     {
         if (ImGui::CollapsingHeader("Collected Objects")) {
-            auto& objects = HookerData::collectSet[klass->address];
+            std::vector<Object> objVec;
+            {
+                std::lock_guard<std::mutex> lock(HookerData::traceMtx);
+                auto& objects = HookerData::collectSet[klass->address];
+                objVec = std::vector<Object>(objects.begin(), objects.end());
+            }
             ImGui::SetNextWindowSizeConstraints(ImVec2(-1, 0), ImVec2(-1, height / 3));
             ImGui::BeginChild("##ScrollingCollectedObjects", ImVec2(width / 1.4f, 0), ImGuiChildFlags_AutoResizeY);
-            if (objects.empty()) {
+            if (objVec.empty()) {
                 ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 50, 50, 255));
                 ImGui::Text("Nothing...");
                 ImGui::PopStyleColor();
             } else {
-                std::vector<Object> objVec(objects.begin(), objects.end());
                 for (auto it = objVec.begin(); it != objVec.end();) {
                     auto object = *it;
                     char buff[64];
@@ -620,7 +635,8 @@ void ClassesTab::ImGuiObjectSelector(int id, Class klass, const char* prefix,
                     ImGui::SameLine();
                     ImGui::PushID(buff);
                     if (ImGui::Button("Remove")) {
-                        objects.erase(object);
+                        std::lock_guard<std::mutex> lock(HookerData::traceMtx);
+                        HookerData::collectSet[klass->address].erase(object);
                         it = objVec.erase(it);
                     } else {
                         ++it;
@@ -837,28 +853,30 @@ void ClassesTab::CallerView(Class klass, Method method, const MethodParamList& p
             if (result && method->name != ".ctor") {
                 auto resultClass = UnityResolve::GetObjectClass(result);
                 std::string resultStr;
+                void* resultObj = nullptr;
                 if (resultClass && UnityResolve::GetClassIsEnum(resultClass)) {
-                    auto toString = resultClass->Get<UnityResolve::Method>("ToString");
+                    auto toString = il2cpp_class_get_method_from_name(resultClass->address, "ToString", 0);
                     if (toString) {
                         void* exc = nullptr;
-                        auto str = il2cpp_runtime_invoke(toString->address, result, nullptr, &exc);
+                        auto str = il2cpp_runtime_invoke(toString, result, nullptr, &exc);
                         if (str) resultStr = UnityDump::readString(str);
                     }
                 } else if (resultClass && resultClass->name == "System.String") {
                     resultStr = UnityDump::readString(result);
                 } else if (resultClass && UnityResolve::GetClassIsValueType(resultClass)) {
                     UnityResolve::GC::KeepAlive(static_cast<UnityResolve::UnityType::Object*>(result));
-                    auto toString = resultClass->Get<UnityResolve::Method>("ToString");
+                    auto toString = il2cpp_class_get_method_from_name(resultClass->address, "ToString", 0);
                     if (toString) {
                         void* exc = nullptr;
-                        auto str = il2cpp_runtime_invoke(toString->address, result, nullptr, &exc);
+                        auto str = il2cpp_runtime_invoke(toString, result, nullptr, &exc);
                         if (str) resultStr = UnityDump::readString(str);
                     }
                 } else if (resultClass) {
-                    auto toString = resultClass->Get<UnityResolve::Method>("ToString");
+                    resultObj = result;
+                    auto toString = il2cpp_class_get_method_from_name(resultClass->address, "ToString", 0);
                     if (toString) {
                         void* exc = nullptr;
-                        auto str = il2cpp_runtime_invoke(toString->address, result, nullptr, &exc);
+                        auto str = il2cpp_runtime_invoke(toString, result, nullptr, &exc);
                         if (str) resultStr = UnityDump::readString(str);
                     }
                 }
@@ -867,7 +885,7 @@ void ClassesTab::CallerView(Class klass, Method method, const MethodParamList& p
                     snprintf(buf, sizeof(buf), "%p", result);
                     resultStr = buf;
                 }
-                callResults.at(method->address).push({resultStr, result});
+                callResults.at(method->address).push({resultStr, resultObj});
                 if (resultClass)
                     savedSet[resultClass].insert(result);
             } else {
@@ -1020,7 +1038,7 @@ void ClassesTab::HookerView(Class klass, Method method, const MethodParamList& p
     bool hooked;
 
     {
-        std::lock_guard<std::mutex> lock(s_hookerMtx);
+        std::lock_guard<std::mutex> lock(HookerData::traceMtx);
         auto it = s_hookerMap.find(method->function);
         hooked = it != s_hookerMap.end();
         if (hooked) {
@@ -1044,7 +1062,7 @@ void ClassesTab::HookerView(Class klass, Method method, const MethodParamList& p
 
     if (ImGui::Button(label)) {
         Tool::ToggleHooker(method);
-        std::lock_guard<std::mutex> lock(s_hookerMtx);
+        std::lock_guard<std::mutex> lock(HookerData::traceMtx);
         auto it = s_hookerMap.find(method->function);
         hooked = it != s_hookerMap.end();
         if (hooked) {
@@ -1057,7 +1075,7 @@ void ClassesTab::HookerView(Class klass, Method method, const MethodParamList& p
     if (hooked) {
         if (!backtracing) {
             if (ImGui::Button("Backtrace")) {
-                std::lock_guard<std::mutex> lock(s_hookerMtx);
+                std::lock_guard<std::mutex> lock(HookerData::traceMtx);
                 auto it = s_hookerMap.find(method->function);
                 if (it != s_hookerMap.end())
                     it->second.backtracing = true;
@@ -1097,7 +1115,7 @@ void ClassesTab::HookerView(Class klass, Method method, const MethodParamList& p
 
 bool ClassesTab::isMethodHooked(Method method) {
     if (!method || !method->function) return false;
-    std::lock_guard<std::mutex> lock(s_hookerMtx);
+    std::lock_guard<std::mutex> lock(HookerData::traceMtx);
     return s_hookerMap.find(method->function) != s_hookerMap.end();
 }
 
@@ -1133,7 +1151,7 @@ bool ClassesTab::MethodViewer(Class klass, Method method, const MethodParamList&
         if (hooked) {
             int hitCount = 0;
             {
-                std::lock_guard<std::mutex> lock(s_hookerMtx);
+                std::lock_guard<std::mutex> lock(HookerData::traceMtx);
                 auto it = s_hookerMap.find(method->function);
                 if (it != s_hookerMap.end()) hitCount = it->second.hitCount;
             }

@@ -119,7 +119,7 @@ std::string dump_method(void *klass) {
             outPut << "ref ";
         }
         auto return_class = il2cpp_class_from_type(return_type);
-        outPut << il2cpp_class_get_name(return_class) << " " << il2cpp_method_get_name(method)
+        outPut << (return_class ? il2cpp_class_get_name(return_class) : "Unknown") << " " << il2cpp_method_get_name(method)
                << "(";
         auto param_count = il2cpp_method_get_param_count(method);
         for (uint32_t i = 0; i < param_count; ++i) {
@@ -143,7 +143,7 @@ std::string dump_method(void *klass) {
                 }
             }
             auto parameter_class = il2cpp_class_from_type(param);
-            outPut << il2cpp_class_get_name(parameter_class) << " "
+            outPut << (parameter_class ? il2cpp_class_get_name(parameter_class) : "Unknown") << " "
                    << il2cpp_method_get_param_name(method, i);
             outPut << ", ";
         }
@@ -351,6 +351,7 @@ void il2cpp_api_init(void *handle) {
         sleep(1);
     }
     auto domain = il2cpp_domain_get();
+    if (!domain) return;
     il2cpp_thread_attach(domain);
 }
 

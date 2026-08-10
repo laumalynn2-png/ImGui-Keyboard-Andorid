@@ -119,12 +119,12 @@ static std::string valueToString(UnityResolve::Type* type, void* intVal, const G
         try {
             auto klass = type->getClass();
             if (!klass) return "?";
-            auto toString = klass->Get<UnityResolve::Method>("ToString");
+            auto toString = il2cpp_class_get_method_from_name(klass->address, "ToString", 0);
             if (!toString) return "?";
             auto boxed = UnityResolve::GetBoxedValue(klass, &intVal);
             if (!boxed) return "null";
             void* exc = nullptr;
-            auto result = il2cpp_runtime_invoke(toString->address, boxed, nullptr, &exc);
+            auto result = il2cpp_runtime_invoke(toString, boxed, nullptr, &exc);
             if (result) {
                 auto strObj = (UnityResolve::UnityType::String*)result;
                 return strObj->ToString();
@@ -137,10 +137,10 @@ static std::string valueToString(UnityResolve::Type* type, void* intVal, const G
     try {
         auto klass = type->getClass();
         if (!klass) return "?";
-        auto toString = klass->Get<UnityResolve::Method>("ToString");
+        auto toString = il2cpp_class_get_method_from_name(klass->address, "ToString", 0);
         if (!toString) return "?";
         void* exc = nullptr;
-        auto result = il2cpp_runtime_invoke(toString->address, intVal, nullptr, &exc);
+        auto result = il2cpp_runtime_invoke(toString, intVal, nullptr, &exc);
         if (result) {
             auto strObj = (UnityResolve::UnityType::String*)result;
             return strObj->ToString();
