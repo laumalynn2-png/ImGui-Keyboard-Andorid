@@ -593,6 +593,7 @@ public:
 		size_t size = 0;
 		auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
 		if (!assemblies) return UnityResolve::NullAssembly();
+		// Leaked intentionally: il2cpp_free() aborts under Android Tagged-Pointer ABI (MTE) on A14+.
 		for (decltype(size) i = 0; i < size; i++) {
 			auto ptr = assemblies[i];
 			if (!ptr) continue;
@@ -601,11 +602,9 @@ public:
 			if (strAssembly == name) {
 				auto result = new Assembly{ .address = ptr, .name = name, .file = il2cpp_image_get_filename(image) };
 				assembly.push_back(result);
-				il2cpp_free(assemblies);
 				return result;
 			}
 		}
-		il2cpp_free(assemblies);
 		return UnityResolve::NullAssembly();
 	}
 

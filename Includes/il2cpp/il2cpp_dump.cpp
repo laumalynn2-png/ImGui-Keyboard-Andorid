@@ -540,6 +540,7 @@ UnityResolve::Class* UnityResolve::FindClass(const std::string& fullName) {
 	size_t size = 0;
 	auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
 	if (!assemblies) return nullptr;
+	// Leaked intentionally: il2cpp_free() aborts under Android Tagged-Pointer ABI (MTE) on A14+.
 	for (decltype(size) i = 0; i < size; i++) {
 		auto ptr = assemblies[i];
 		if (!ptr) continue;
@@ -555,12 +556,10 @@ UnityResolve::Class* UnityResolve::FindClass(const std::string& fullName) {
 			if (ns && *ns) full = std::string(ns) + "." + name;
 			else full = name;
 			if (full == fullName) {
-				il2cpp_free(assemblies);
 				return GetOrCreateClass(klass);
 			}
 		}
 	}
-	il2cpp_free(assemblies);
 	return nullptr;
 }
 

@@ -39,12 +39,12 @@ static std::vector<void*> getAllImages() {
     size_t size = 0;
     auto assemblies = il2cpp_domain_get_assemblies(domain, &size);
     if (!assemblies) return images;
+    // Leaked intentionally: il2cpp_free() aborts under Android Tagged-Pointer ABI (MTE) on A14+.
     for (size_t i = 0; i < size; i++) {
         if (!assemblies[i]) continue;
         auto image = il2cpp_assembly_get_image(assemblies[i]);
         if (image) images.push_back(image);
     }
-    il2cpp_free(assemblies);
     if (il2cpp_image_get_name) {
         std::sort(images.begin(), images.end(), [](void* a, void* b) {
             return strcmp(il2cpp_image_get_name(a), il2cpp_image_get_name(b)) < 0;
