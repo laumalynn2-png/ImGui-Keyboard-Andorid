@@ -102,8 +102,8 @@ void Tool::ConfigSave() {
 bool Tool::ToggleHooker(UnityResolve::Method* method, int state) {
     if (!method || !method->function) return false;
     auto ptr = method->function;
-    auto oIt = oMap.find(ptr);
-    if (oIt != oMap.end() && !oIt->second.bytes.empty()) return false;
+    auto oIt = ClassesTab::oMap.find(ptr);
+    if (oIt != ClassesTab::oMap.end() && !oIt->second.bytes.empty()) return false;
     std::lock_guard<std::mutex> lock(HookerData::traceMtx);
     auto it = s_hookerMap.find(ptr);
     bool hooked = it != s_hookerMap.end();
